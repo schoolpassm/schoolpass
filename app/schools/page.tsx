@@ -13,7 +13,7 @@ import { SchoolFormModal } from "@/components/schools/SchoolFormModal";
 import { NeisSyncModal } from "@/components/schools/NeisSyncModal";
 import { useSchoolsPaginated } from "@/lib/hooks/useSchoolsPaginated";
 import { useInfiniteScrollSentinel } from "@/lib/hooks/useInfiniteScrollSentinel";
-import { SchoolGrade, SchoolStatus } from "@/types";
+import { SchoolGrade, SchoolLevel, SchoolStatus } from "@/types";
 import { exportSchoolsToExcel, parseSchoolExcel, downloadSchoolTemplate } from "@/lib/excel";
 import { bulkImportSchools } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
@@ -29,13 +29,20 @@ export default function SchoolsPage() {
   const [regionFilter, setRegionFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | undefined>(undefined);
   const [gradeFilter, setGradeFilter] = useState<SchoolGrade | undefined>(undefined);
+  const [levelFilter, setLevelFilter] = useState<SchoolLevel | undefined>(undefined);
   const [importing, setImporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filters = useMemo(
-    () => ({ region: regionFilter, status: statusFilter, grade: gradeFilter, namePrefix: namePrefix || undefined }),
-    [regionFilter, statusFilter, gradeFilter, namePrefix]
+    () => ({
+      region: regionFilter,
+      status: statusFilter,
+      grade: gradeFilter,
+      level: levelFilter,
+      namePrefix: namePrefix || undefined,
+    }),
+    [regionFilter, statusFilter, gradeFilter, levelFilter, namePrefix]
   );
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSchoolsPaginated(filters);
@@ -128,10 +135,22 @@ export default function SchoolsPage() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Select value={regionFilter ?? ""} onChange={(e) => setRegionFilter(e.target.value || undefined)} className="w-44">
-          <option value="">전체 교육청</option>
+          <option value="">전체 지역</option>
           {NEIS_REGION_CODES.map((r) => (
-            <option key={r.code} value={r.name}>
+            <option key={r.code} value={r.provinceName}>
               {r.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={levelFilter ?? ""}
+          onChange={(e) => setLevelFilter((e.target.value || undefined) as SchoolLevel | undefined)}
+          className="w-32"
+        >
+          <option value="">전체 학교급</option>
+          {["초등학교", "중학교", "고등학교", "특수학교", "유치원"].map((l) => (
+            <option key={l} value={l}>
+              {l}
             </option>
           ))}
         </Select>

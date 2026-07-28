@@ -11,25 +11,31 @@
 
 const NEIS_BASE_URL = "https://open.neis.go.kr/hub/schoolInfo";
 
-/** 시도교육청코드 (ATPT_OFCDC_SC_CODE) — 전국 17개 시도교육청 */
-export const NEIS_REGION_CODES: { code: string; name: string }[] = [
-  { code: "B10", name: "서울특별시교육청" },
-  { code: "C10", name: "부산광역시교육청" },
-  { code: "D10", name: "대구광역시교육청" },
-  { code: "E10", name: "인천광역시교육청" },
-  { code: "F10", name: "광주광역시교육청" },
-  { code: "G10", name: "대전광역시교육청" },
-  { code: "H10", name: "울산광역시교육청" },
-  { code: "I10", name: "세종특별자치시교육청" },
-  { code: "J10", name: "경기도교육청" },
-  { code: "K10", name: "강원특별자치도교육청" },
-  { code: "M10", name: "충청북도교육청" },
-  { code: "N10", name: "충청남도교육청" },
-  { code: "P10", name: "전북특별자치도교육청" },
-  { code: "Q10", name: "전라남도교육청" },
-  { code: "R10", name: "경상북도교육청" },
-  { code: "S10", name: "경상남도교육청" },
-  { code: "T10", name: "제주특별자치도교육청" },
+/**
+ * 시도교육청코드(ATPT_OFCDC_SC_CODE) — 전국 17개 시도교육청
+ * name: 교육청 공식명칭(동기화 화면 드롭다운 표시용)
+ * provinceName: 학교 데이터의 region 필드에 실제로 저장되는 시도명 (NEIS LCTN_SC_NM 기준)
+ *   — 목록 필터는 반드시 provinceName으로 매칭해야 함. name(교육청명)으로 필터링하면
+ *     region 필드값과 문자열이 달라 검색 결과가 안 나온다.
+ */
+export const NEIS_REGION_CODES: { code: string; name: string; provinceName: string }[] = [
+  { code: "B10", name: "서울특별시교육청", provinceName: "서울특별시" },
+  { code: "C10", name: "부산광역시교육청", provinceName: "부산광역시" },
+  { code: "D10", name: "대구광역시교육청", provinceName: "대구광역시" },
+  { code: "E10", name: "인천광역시교육청", provinceName: "인천광역시" },
+  { code: "F10", name: "광주광역시교육청", provinceName: "광주광역시" },
+  { code: "G10", name: "대전광역시교육청", provinceName: "대전광역시" },
+  { code: "H10", name: "울산광역시교육청", provinceName: "울산광역시" },
+  { code: "I10", name: "세종특별자치시교육청", provinceName: "세종특별자치시" },
+  { code: "J10", name: "경기도교육청", provinceName: "경기도" },
+  { code: "K10", name: "강원특별자치도교육청", provinceName: "강원특별자치도" },
+  { code: "M10", name: "충청북도교육청", provinceName: "충청북도" },
+  { code: "N10", name: "충청남도교육청", provinceName: "충청남도" },
+  { code: "P10", name: "전북특별자치도교육청", provinceName: "전북특별자치도" },
+  { code: "Q10", name: "전라남도교육청", provinceName: "전라남도" },
+  { code: "R10", name: "경상북도교육청", provinceName: "경상북도" },
+  { code: "S10", name: "경상남도교육청", provinceName: "경상남도" },
+  { code: "T10", name: "제주특별자치도교육청", provinceName: "제주특별자치도" },
 ];
 
 export interface NeisSchoolRow {

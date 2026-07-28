@@ -13,12 +13,13 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { SchoolSummaryDoc, SchoolGrade, SchoolStatus } from "@/types";
+import { SchoolSummaryDoc, SchoolGrade, SchoolStatus, SchoolLevel } from "@/types";
 
 export interface SchoolListFilters {
   region?: string;
   status?: SchoolStatus;
   grade?: SchoolGrade;
+  level?: SchoolLevel;
   /** 이름 접두어 검색 (Firestore 특성상 완전한 전문검색은 아니며, 이름이 이 값으로 "시작하는" 학교만 매칭됨) */
   namePrefix?: string;
 }
@@ -34,6 +35,7 @@ async function fetchSchoolsPage(filters: SchoolListFilters, cursor: QueryDocumen
   const constraints: QueryConstraint[] = [];
 
   if (filters.region) constraints.push(where("region", "==", filters.region));
+  if (filters.level) constraints.push(where("level", "==", filters.level));
   if (filters.status) constraints.push(where("status", "==", filters.status));
   if (filters.grade) constraints.push(where("grade", "==", filters.grade));
 
