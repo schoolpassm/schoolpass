@@ -70,6 +70,10 @@ export interface SchoolDoc extends BaseDoc {
   partnerId?: string; // 연결된 지역 파트너
   isNewlyOpened?: boolean; // 신설 학교 여부 (여름방학 타겟용)
   archived?: boolean;
+  // --- 학교알리미(NEIS) 자동 동기화 관련 ---
+  neisSchoolCode?: string; // NEIS SD_SCHUL_CODE, 동기화 매칭 기준 키
+  syncedFromNeis?: boolean; // NEIS 동기화로 생성된 레코드인지 여부
+  lastSyncedAt?: Timestamp | null; // 마지막 NEIS 동기화 시각
 }
 
 /** schools/{schoolId}/activities - 전화/이메일/문자/방문 기록 통합 타임라인 */

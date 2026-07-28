@@ -3,12 +3,13 @@
 export const dynamic = "force-dynamic";
 
 import { useMemo, useRef, useState } from "react";
-import { Plus, Upload, Download, FileDown, Search } from "lucide-react";
+import { Plus, Upload, Download, FileDown, Search, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
 import { SchoolTable } from "@/components/schools/SchoolTable";
 import { SchoolFormModal } from "@/components/schools/SchoolFormModal";
+import { NeisSyncModal } from "@/components/schools/NeisSyncModal";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { SchoolDoc, SchoolGrade, SchoolStatus } from "@/types";
 import { exportSchoolsToExcel, parseSchoolExcel, downloadSchoolTemplate } from "@/lib/excel";
@@ -19,6 +20,7 @@ export default function SchoolsPage() {
   const { data: schools, loading } = useCollection<SchoolDoc>("schools");
   const { firebaseUser } = useAuth();
   const [formOpen, setFormOpen] = useState(false);
+  const [neisOpen, setNeisOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [regionFilter, setRegionFilter] = useState("전체");
   const [statusFilter, setStatusFilter] = useState<"전체" | SchoolStatus>("전체");
@@ -68,6 +70,9 @@ export default function SchoolsPage() {
           />
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setNeisOpen(true)}>
+            <RefreshCw size={14} /> 학교알리미 동기화
+          </Button>
           <Button variant="secondary" size="sm" onClick={downloadSchoolTemplate}>
             <FileDown size={14} /> 템플릿
           </Button>
@@ -111,6 +116,7 @@ export default function SchoolsPage() {
       <SchoolTable schools={filtered} />
 
       <SchoolFormModal open={formOpen} onClose={() => setFormOpen(false)} />
+      <NeisSyncModal open={neisOpen} onClose={() => setNeisOpen(false)} />
     </AppShell>
   );
 }
