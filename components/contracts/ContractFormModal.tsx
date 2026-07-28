@@ -8,16 +8,16 @@ import { createContract } from "@/lib/api/contracts";
 import { calculateCommission, formatKRW } from "@/lib/commission";
 import { useAuth } from "@/lib/auth-context";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { SchoolDoc, PartnerDoc, CommissionZone } from "@/types";
+import { PartnerDoc, CommissionZone } from "@/types";
 import { Timestamp } from "firebase/firestore";
+import { SchoolPickerInput } from "@/components/schools/SchoolPickerInput";
 
 export function ContractFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { firebaseUser, userDoc } = useAuth();
-  const { data: schools } = useCollection<SchoolDoc>("schools");
   const { data: partners } = useCollection<PartnerDoc>("partners");
   const [saving, setSaving] = useState(false);
 
-  const [schoolId, setSchoolId] = useState("");
+  const [selectedSchool, setSelectedSchool] = useState<{ id: string; name: string; region: string } | null>(null);
   const [contractAmount, setContractAmount] = useState("");
   const [installAmount, setInstallAmount] = useState("");
   const [installDate, setInstallDate] = useState("");
@@ -25,9 +25,9 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
   const [zone, setZone] = useState<CommissionZone>("공동권역");
   const [partnerId, setPartnerId] = useState("");
 
-  const selectedSchool = schools.find((s) => s.id === schoolId);
   const selectedPartner = partners.find((p) => p.id === partnerId);
   const amountNum = Number(contractAmount) || 0;
+  const schoolId = selectedSchool?.id ?? "";
 
   const preview = useMemo(() => calculateCommission(amountNum, zone), [amountNum, zone]);
 
@@ -65,14 +65,7 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="학교">
-            <Select required value={schoolId} onChange={(e) => setSchoolId(e.target.value)}>
-              <option value="">학교 선택</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.region})
-                </option>
-              ))}
-            </Select>
+            <SchoolPickerInput value={selectedSchool} onSelect={(s) => setSelectedSchool(s)} />
           </Field>
           <Field label="지역파트너">
             <Select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>

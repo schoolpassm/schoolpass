@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Phone, Mail, MapPin, MessageSquare } from "lucide-react";
-import { SchoolDoc } from "@/types";
+import { SchoolSummaryDoc } from "@/types";
 import { StatusBadge, GradeBadge, Tag } from "@/components/ui/Badge";
 import { toTel, toSms, toMailto, toGoogleMaps } from "@/lib/utils";
 
@@ -11,7 +11,7 @@ export function SchoolTable({
   selectedIds,
   onToggleSelect,
 }: {
-  schools: SchoolDoc[];
+  schools: SchoolSummaryDoc[];
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
 }) {

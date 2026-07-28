@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<SchoolQuoteDoc["status"], string> = {
 };
 
 export function QuotesTab({ schoolId }: { schoolId: string }) {
-  const { data: quotes, loading } = useCollection<SchoolQuoteDoc>(`schools/${schoolId}/quotes`, [
+  const { data: quotes, loading } = useCollection<SchoolQuoteDoc>(`schools_detail/${schoolId}/quotes`, [
     orderBy("createdAt", "desc"),
   ]);
   const [amount, setAmount] = useState("");

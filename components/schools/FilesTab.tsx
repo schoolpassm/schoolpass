@@ -21,7 +21,7 @@ const CATEGORY_LABEL: Record<SchoolFileCategory, string> = {
 };
 
 export function FilesTab({ schoolId }: { schoolId: string }) {
-  const { data: files, loading } = useCollection<SchoolFileDoc>(`schools/${schoolId}/files`, [
+  const { data: files, loading } = useCollection<SchoolFileDoc>(`schools_detail/${schoolId}/files`, [
     orderBy("createdAt", "desc"),
   ]);
   const { firebaseUser } = useAuth();
@@ -38,7 +38,7 @@ export function FilesTab({ schoolId }: { schoolId: string }) {
       const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
-      await addDoc(collection(db, "schools", schoolId, "files"), {
+      await addDoc(collection(db, "schools_detail", schoolId, "files"), {
         category,
         fileName: file.name,
         url,

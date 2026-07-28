@@ -23,9 +23,9 @@ export async function createContract(
       createdBy: uid,
     });
 
-    // 학교 상태를 계약으로 갱신
-    const schoolRef = doc(db, "schools", input.schoolId);
-    tx.update(schoolRef, { status: "계약", updatedAt: serverTimestamp() });
+    // 학교 상태를 계약으로 갱신 (schools_detail + schools_summary 동시 갱신)
+    tx.update(doc(db, "schools_detail", input.schoolId), { status: "계약", updatedAt: serverTimestamp() });
+    tx.set(doc(db, "schools_summary", input.schoolId), { status: "계약", updatedAt: serverTimestamp() }, { merge: true });
 
     // 파트너 누계 실적 갱신 (지정된 경우)
     if (input.partnerId) {

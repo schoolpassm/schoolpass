@@ -31,7 +31,7 @@ export interface UserDoc extends BaseDoc {
 }
 
 // ----------------------------------------------------------------------------
-// 2. schools
+// 2. schools_detail (전체 상세 정보) + schools_summary (지도/목록용 경량 문서)
 // ----------------------------------------------------------------------------
 export type SchoolLevel = "초등학교" | "중학교" | "고등학교" | "특수학교" | "유치원";
 export type SchoolGrade = "A" | "B" | "C" | "D";
@@ -48,6 +48,10 @@ export type SchoolStatus =
   | "보류"
   | "실패";
 
+/**
+ * schools_detail/{schoolId} — 전체 상세 문서 (Source of Truth).
+ * 학교 상세페이지에서만 조회한다. 목록/지도/칸반에서는 절대 이 컬렉션을 조회하지 않는다.
+ */
 export interface SchoolDoc extends BaseDoc {
   name: string; // 학교명
   region: string; // 지역 (시/도)
@@ -61,6 +65,8 @@ export interface SchoolDoc extends BaseDoc {
   email?: string;
   eduOfficeId?: string; // 교육지원청 참조 (educationOffices/{id})
   studentCount?: number; // 학생수
+  classCount?: number; // 학급수
+  hasKindergarten?: boolean; // 병설유치원 운영 여부
   ownerUid?: string; // 담당자 uid
   ownerName?: string; // 담당자 이름 (비정규화, 목록 렌더링용)
   status: SchoolStatus; // 영업 파이프라인 상태 (칸반 컬럼과 동일 값)
@@ -69,6 +75,7 @@ export interface SchoolDoc extends BaseDoc {
   note?: string;
   partnerId?: string; // 연결된 지역 파트너
   isNewlyOpened?: boolean; // 신설 학교 여부 (여름방학 타겟용)
+  isClosed?: boolean; // 폐교 여부 (NEIS 동기화로 감지)
   archived?: boolean;
   // --- 학교알리미(NEIS) 자동 동기화 관련 ---
   neisSchoolCode?: string; // NEIS SD_SCHUL_CODE, 동기화 매칭 기준 키
@@ -76,8 +83,46 @@ export interface SchoolDoc extends BaseDoc {
   lastSyncedAt?: Timestamp | null; // 마지막 NEIS 동기화 시각
   // --- AI 영업도구 ---
   aiScore?: number | null; // AI가 산정한 계약 가능성 점수 (0~100)
-  aiScoreReason?: string; // 점수 산정 근거
+  aiScoreReason?: string; // 점수 산정 근거 (사람이 읽는 요약 텍스트)
+  aiScoreFactors?: AiScoreFactor[]; // 구조화된 근거 목록 (뱃지 렌더링용)
   aiScoreUpdatedAt?: Timestamp | null;
+  lastContactedAt?: Timestamp | null; // 최근 접촉일 (활동기록 생성 시 자동 갱신, "이번주 전화 대상" 계산용)
+}
+
+/**
+ * schools_summary/{schoolId} — schools_detail과 동일한 문서ID를 쓰는 경량 사본.
+ * 목록/지도/칸반/대시보드는 반드시 이 컬렉션만 조회한다 (필드 수·페이로드를 최소화해
+ * 학교가 10만 건이 되어도 목록·지도 렌더링 성능이 유지되도록 함).
+ * schools_detail이 변경될 때마다 lib/api/schools.ts의 CRUD 함수가 배치 쓰기로 동기화한다.
+ */
+export interface SchoolSummaryDoc {
+  id: string;
+  name: string;
+  region: string;
+  district?: string;
+  level: SchoolLevel;
+  status: SchoolStatus;
+  grade: SchoolGrade;
+  lat?: number;
+  lng?: number;
+  address?: string; // 빠른액션(지도열기)용, 크기가 작아 요약에 포함
+  phone?: string; // 빠른액션(전화/문자)용
+  email?: string; // 빠른액션(이메일)용
+  studentCount?: number;
+  ownerName?: string;
+  partnerId?: string;
+  eduOfficeId?: string;
+  tags: string[];
+  isNewlyOpened?: boolean;
+  aiScore?: number | null;
+  lastContactedAt?: Timestamp | null;
+  updatedAt: Timestamp | null;
+}
+
+/** AI 계약가능성 점수의 구조화된 근거 한 줄 */
+export interface AiScoreFactor {
+  label: string; // 예: "같은 교육지원청 구축학교 6곳"
+  positive: boolean; // 가점 요인인지 감점 요인인지
 }
 
 /** schools/{schoolId}/activities - 전화/이메일/문자/방문 기록 통합 타임라인 */
@@ -111,6 +156,15 @@ export interface SchoolFileDoc extends BaseDoc {
   storagePath: string; // 삭제용 경로
   sizeBytes?: number;
   uploadedByUid: string;
+}
+
+/** schools_detail/{schoolId}/ai_logs — AI 생성 이력 (재생성 시 이전 결과 추적용) */
+export interface AiLogDoc extends BaseDoc {
+  action: string;
+  model: string;
+  resultText: string;
+  score?: number | null;
+  requestedByUid: string;
 }
 
 // ----------------------------------------------------------------------------

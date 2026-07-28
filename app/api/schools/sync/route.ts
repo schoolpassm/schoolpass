@@ -7,10 +7,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 대량 학교 동기화 대비 (Vercel Pro 기준, Hobby는 60초 제한에 유의)
 
 /**
- * 인증 체크
- * 1) Vercel Cron이 자동 호출하는 경우: Authorization: Bearer <CRON_SECRET>
- * 2) 관리자가 화면에서 수동 호출하는 경우: Authorization: Bearer <Firebase ID Token> + users/{uid}.role in [admin, manager]
+ * 확장성 설계
+ * ---------------------------------------------------------------------------
+ * NEIS의 SD_SCHUL_CODE(학교 고유코드)를 Firestore 문서ID로 그대로 사용한다.
+ * 그 덕분에 "기존 학교 전체를 미리 읽어서 매칭 맵을 만드는" 방식이 필요 없다 —
+ * 문서ID로 바로 upsert하면 되므로, 전국 10만 건이 있어도 이번에 동기화하는
+ * 지역(region)의 학교 수에 비례하는 읽기/쓰기만 발생한다 (전체 스캔 없음).
+ * ---------------------------------------------------------------------------
  */
+
 async function assertAuthorized(req: NextRequest) {
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -19,26 +24,23 @@ async function assertAuthorized(req: NextRequest) {
     return { via: "cron" as const };
   }
 
-  if (!token) throw new Response("Unauthorized", { status: 401 });
+  if (!token) throw new Response(JSON.stringify({ error: "로그인이 필요합니다." }), { status: 401 });
 
-  const admin = await import("firebase-admin/auth");
+  const authMod = await import("firebase-admin/auth");
   const { getApps } = await import("firebase-admin/app");
-  // getAdminDb() 호출 시 admin app이 초기화되므로 먼저 db를 얻어둔다.
   getAdminDb();
-  const decoded = await admin.getAuth(getApps()[0]).verifyIdToken(token);
+  const decoded = await authMod.getAuth(getApps()[0]).verifyIdToken(token);
 
   const db = getAdminDb();
   const userSnap = await db.collection("users").doc(decoded.uid).get();
   const role = userSnap.exists ? userSnap.data()?.role : null;
   if (role !== "admin" && role !== "manager") {
-    throw new Response("Forbidden: admin/manager 권한이 필요합니다.", { status: 403 });
+    throw new Response(JSON.stringify({ error: "admin/manager 권한이 필요합니다." }), { status: 403 });
   }
   return { via: "user" as const, uid: decoded.uid };
 }
 
 export async function GET(req: NextRequest) {
-  // Vercel Cron은 GET으로 호출하며, CRON_SECRET 환경변수를 설정해두면
-  // Vercel이 자동으로 Authorization: Bearer <CRON_SECRET> 헤더를 붙여 보낸다.
   return POST(req);
 }
 
@@ -61,28 +63,29 @@ export async function POST(req: NextRequest) {
 
   const db = getAdminDb();
 
-  // 기존 학교의 neisSchoolCode -> 문서ID 매핑을 미리 만들어 중복 생성을 방지한다.
-  const existingSnap = await db.collection("schools").select("neisSchoolCode").get();
-  const existingMap = new Map<string, string>();
-  existingSnap.forEach((doc) => {
-    const code = doc.get("neisSchoolCode");
-    if (code) existingMap.set(code, doc.id);
-  });
-
   let created = 0;
   let updated = 0;
-  let failedRegions: string[] = [];
+  const failedRegions: string[] = [];
 
   for (const regionCode of regionCodes) {
     try {
       const rows = await fetchNeisSchools(regionCode, schoolName);
-      const chunks = [];
-      for (let i = 0; i < rows.length; i += 400) chunks.push(rows.slice(i, i + 400));
+      const chunks: (typeof rows)[] = [];
+      for (let i = 0; i < rows.length; i += 300) chunks.push(rows.slice(i, i + 300));
 
       for (const chunk of chunks) {
+        // 이번 청크(최대 300건)에 한해서만 존재 여부를 확인 — 전체 컬렉션 스캔이 아니라
+        // "이번에 동기화하는 학교들"에 비례하는 읽기만 발생한다.
+        const existSnaps = await Promise.all(
+          chunk.map((row) => db.collection("schools_detail").doc(row.SD_SCHUL_CODE).get())
+        );
+
         const batch = db.batch();
-        for (const row of chunk) {
-          const existingId = existingMap.get(row.SD_SCHUL_CODE);
+        chunk.forEach((row, idx) => {
+          const exists = existSnaps[idx].exists;
+          const detailRef = db.collection("schools_detail").doc(row.SD_SCHUL_CODE);
+          const summaryRef = db.collection("schools_summary").doc(row.SD_SCHUL_CODE);
+
           const masterFields = {
             name: row.SCHUL_NM,
             region: row.LCTN_SC_NM || row.ATPT_OFCDC_SC_NM,
@@ -90,18 +93,27 @@ export async function POST(req: NextRequest) {
             address: row.ORG_RDNMA ?? "",
             phone: row.ORG_TELNO ?? "",
             neisSchoolCode: row.SD_SCHUL_CODE,
+            isClosed: false,
             lastSyncedAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           };
+          const summaryFields = {
+            name: masterFields.name,
+            region: masterFields.region,
+            level: masterFields.level,
+            address: masterFields.address,
+            phone: masterFields.phone,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
 
-          if (existingId) {
+          if (exists) {
             // 이미 등록된 학교: 영업 관련 필드(status/grade/ownerName/tags/note/partnerId)는 건드리지 않고
             // NEIS 원본 마스터 정보만 갱신한다.
-            batch.update(db.collection("schools").doc(existingId), masterFields);
+            batch.set(detailRef, masterFields, { merge: true });
+            batch.set(summaryRef, summaryFields, { merge: true });
             updated += 1;
           } else {
-            const ref = db.collection("schools").doc();
-            batch.set(ref, {
+            batch.set(detailRef, {
               ...masterFields,
               status: "신규",
               grade: "C",
@@ -110,10 +122,15 @@ export async function POST(req: NextRequest) {
               syncedFromNeis: true,
               createdAt: FieldValue.serverTimestamp(),
             });
-            existingMap.set(row.SD_SCHUL_CODE, ref.id);
+            batch.set(summaryRef, {
+              ...summaryFields,
+              status: "신규",
+              grade: "C",
+              tags: ["학교알리미동기화"],
+            });
             created += 1;
           }
-        }
+        });
         await batch.commit();
       }
     } catch (err) {

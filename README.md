@@ -134,8 +134,44 @@ schoolpass-crm/
 - **제안서**만 품질을 위해 **Sonnet 5** ($3/$15 per MTok) 사용 → 건당 수십 원 수준
 - 모델 배정은 `lib/ai-prompts.ts`의 `modelForAction()`에서 변경 가능
 
+## 성능 최적화 리팩토링 (10만 건 대응)
+
+학교 데이터가 대량(수만~10만 건)이 되어도 빠르게 동작하도록 데이터 구조와 쿼리 패턴을 개편했습니다.
+
+- **schools_detail / schools_summary 분리**: 목록·칸반·지도·대시보드는 경량 문서인 `schools_summary`만 조회하고,
+  전화기록·견적·첨부파일 등 무거운 상세 데이터는 학교를 클릭했을 때만 `schools_detail`에서 lazy load합니다.
+  모든 쓰기는 `lib/api/schools.ts`가 두 컬렉션을 배치(batch)로 동시에 갱신해 데이터 정합성을 보장합니다.
+- **커서 페이지네이션 + 무한스크롤**: 학교관리 목록은 `limit()`+`startAfter()`로 한 번에 50건만 불러오며(react-query 캐시 적용),
+  스크롤이 바닥에 닿으면 자동으로 다음 페이지를 불러옵니다. 절대 `getDocs(collection(...))`로 전체를 한 번에 읽지 않습니다.
+- **칸반보드**: 파이프라인 단계(컬럼)별로 `where(status==X)+limit(100)`의 독립적인 bounded 쿼리를 사용합니다.
+- **대시보드**: `getCountFromServer()` 집계쿼리로 통계 카드의 개수를 계산해, 문서 전체를 읽지 않고 카운트만 가져옵니다.
+- **NEIS 동기화**: 학교 고유코드(SD_SCHUL_CODE)를 Firestore 문서ID로 그대로 사용해, 매번 전체 컬렉션을 조회해 중복을 확인하는 대신
+  동기화 대상 지역 분량만큼만 읽고 씁니다.
+- **Kakao Map**: 화면에 보이는 좌표 범위(Bounds)에 해당하는 학교만 조회하고, Kakao MarkerClusterer로 마커를 군집화합니다.
+
+## AI 학교 우선순위 (계약 가능성 점수)
+
+학교 상세 → "계약 가능성 점수" 버튼을 누르면, AI가 아래를 **서버에서 실제로 계산한 데이터만 근거로 사용**해 0~100점을 매깁니다
+(AI가 확인 안 된 통계를 지어내지 않도록 프롬프트에서 강제합니다):
+- 같은 지역 구축(설치완료) 학교 수
+- 학생수/학급수 규모
+- 가장 가까운 구축학교까지의 거리 (위경도가 있는 경우, Haversine 계산)
+- 신설 학교 여부, 병설유치원 운영 여부
+- 최근 접촉 경과일수
+
+점수를 저장하면 학교 상세 상단과 칸반 카드, 대시보드 TOP10/TOP20 리스트에 반영됩니다.
+
+## Kakao Map 설정 (선택, 지도 기능용)
+
+1. [Kakao Developers](https://developers.kakao.com) → 애플리케이션 추가
+2. 앱 키 중 **JavaScript 키**를 `NEXT_PUBLIC_KAKAO_MAP_KEY`에, **REST API 키**를 `KAKAO_REST_API_KEY`에 등록
+3. Kakao Developers 콘솔 → 플랫폼 설정 → Web 플랫폼에 배포 도메인(예: `https://schoolpass-xxxx.vercel.app`) 등록 (안 하면 지도가 안 뜸)
+4. 학교관리 → "지도 보기" → 처음엔 좌표가 없어 마커가 안 보이므로, 지도 페이지의 "주소 좌표 변환" 버튼을 눌러 순차적으로 지오코딩
+
 ## 남은 확장 포인트 (실제 운영 전 권장)
-- Cloud Functions로 대시보드/통계 집계를 서버사이드 배치화 (현재는 클라이언트 실시간 집계)
 - NEIS 학생수/학급수 API 추가 연동 (현재는 학교기본정보만 자동화됨)
+- geohash 기반 정밀 지도 bounds 쿼리 (현재는 lat 범위 + 클라이언트 lng 필터링으로 근사 처리)
+- 폐교 감지 로직 (NEIS 응답에서 사라진 학교를 `isClosed: true`로 표시하는 배치)
 - 캘린더 그리드 UI(월간뷰) 및 FCM 푸시 알림 연동
 - 계약서/전자결재 PDF 자동 생성
+- Cloud Scheduler(GCP)가 필요하면 Firebase Functions + Cloud Scheduler로 이관 가능 (현재는 Vercel Cron으로 동일 기능 구현)

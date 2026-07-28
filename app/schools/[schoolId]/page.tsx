@@ -14,7 +14,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { SchoolDoc } from "@/types";
 
 export default function SchoolDetailPage({ params }: { params: { schoolId: string } }) {
-  const { data: school, loading } = useFirestoreDoc<SchoolDoc>("schools", params.schoolId);
+  const { data: school, loading } = useFirestoreDoc<SchoolDoc>("schools_detail", params.schoolId);
 
   return (
     <AppShell title="학교 상세">

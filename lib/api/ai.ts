@@ -7,6 +7,8 @@ export interface AiGenerateResult {
   model: string;
   text: string;
   score: number | null;
+  factors: { label: string; positive: boolean }[];
+  installedNeighbors: { name: string; distanceKm?: number; studentCount?: number; sameEduOffice: boolean; sameLevel: boolean }[];
 }
 
 export async function generateAi(user: User, schoolId: string, action: AiAction): Promise<AiGenerateResult> {

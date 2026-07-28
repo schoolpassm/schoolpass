@@ -7,16 +7,15 @@ import { Field, Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { createSchedule } from "@/lib/api/schedules";
 import { useAuth } from "@/lib/auth-context";
-import { useCollection } from "@/lib/hooks/useCollection";
-import { SchoolDoc, ScheduleType } from "@/types";
+import { ScheduleType } from "@/types";
+import { SchoolPickerInput } from "@/components/schools/SchoolPickerInput";
 
 export function ScheduleFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { firebaseUser, userDoc } = useAuth();
-  const { data: schools } = useCollection<SchoolDoc>("schools");
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState<ScheduleType>("visit");
   const [title, setTitle] = useState("");
-  const [schoolId, setSchoolId] = useState("");
+  const [selectedSchool, setSelectedSchool] = useState<{ id: string; name: string } | null>(null);
   const [startAt, setStartAt] = useState("");
   const [location, setLocation] = useState("");
 
@@ -25,13 +24,12 @@ export function ScheduleFormModal({ open, onClose }: { open: boolean; onClose: (
     if (!firebaseUser || !startAt) return;
     setSaving(true);
     try {
-      const school = schools.find((s) => s.id === schoolId);
       await createSchedule(
         {
           type,
           title,
-          schoolId: schoolId || undefined,
-          schoolName: school?.name,
+          schoolId: selectedSchool?.id,
+          schoolName: selectedSchool?.name,
           startAt: Timestamp.fromDate(new Date(startAt)),
           location,
           assigneeUid: firebaseUser.uid,
@@ -61,14 +59,7 @@ export function ScheduleFormModal({ open, onClose }: { open: boolean; onClose: (
           <Input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 용신고 방문 시연" />
         </Field>
         <Field label="관련 학교">
-          <Select value={schoolId} onChange={(e) => setSchoolId(e.target.value)}>
-            <option value="">선택 안 함</option>
-            {schools.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
+          <SchoolPickerInput value={selectedSchool} onSelect={(s) => setSelectedSchool(s)} placeholder="선택 안 함 (검색하려면 입력)" />
         </Field>
         <Field label="일시">
           <Input type="datetime-local" required value={startAt} onChange={(e) => setStartAt(e.target.value)} />

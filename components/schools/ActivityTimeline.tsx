@@ -29,7 +29,7 @@ const FILTERS: { key: ActivityType | "all"; label: string }[] = [
 ];
 
 export function ActivityTimeline({ schoolId }: { schoolId: string }) {
-  const { data: activities, loading } = useCollection<SchoolActivityDoc>(`schools/${schoolId}/activities`, [
+  const { data: activities, loading } = useCollection<SchoolActivityDoc>(`schools_detail/${schoolId}/activities`, [
     orderBy("createdAt", "desc"),
   ]);
   const { firebaseUser, userDoc } = useAuth();

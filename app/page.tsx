@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   School,
   Building2,
@@ -12,24 +12,35 @@ import {
   FileText,
   FileSignature,
   CheckCircle2,
+  TrendingUp,
+  Wallet,
 } from "lucide-react";
+import { collection, getCountFromServer, query, where } from "firebase/firestore";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { RegionContractChart, MonthlyContractChart } from "@/components/dashboard/Charts";
 import { PipelineOverview } from "@/components/dashboard/PipelineOverview";
+import { TopSchoolsList } from "@/components/dashboard/TopSchoolsList";
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { SchoolDoc, EducationOfficeDoc, ContractDoc } from "@/types";
+import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
+import { EducationOfficeDoc, ContractDoc } from "@/types";
+import { formatKRW } from "@/lib/commission";
+import { db } from "@/lib/firebase";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 export default function DashboardPage() {
-  const { data: schools, loading: schoolsLoading } = useCollection<SchoolDoc>("schools");
+  const stats = useDashboardStats();
   const { data: eduOffices } = useCollection<EducationOfficeDoc>("educationOffices");
   const { data: contracts } = useCollection<ContractDoc>("contracts");
-
-  const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of schools) counts[s.status] = (counts[s.status] ?? 0) + 1;
-    return counts;
-  }, [schools]);
 
   const regionData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -48,10 +59,44 @@ export default function DashboardPage() {
     return Object.entries(map).map(([month, count]) => ({ month, count }));
   }, [contracts]);
 
+  // 예상 계약 / 예상 매출: 활성 파이프라인 중 AI 점수가 매겨진 학교들의 점수 합 × 평균 계약금액
+  const avgContractAmount = useMemo(() => {
+    if (contracts.length === 0) return 0;
+    return contracts.reduce((sum, c) => sum + (c.contractAmount ?? 0), 0) / contracts.length;
+  }, [contracts]);
+
+  const expectedContracts = useMemo(() => {
+    return stats.topContractProbability.reduce((sum, s) => sum + (s.aiScore ?? 0) / 100, 0);
+  }, [stats.topContractProbability]);
+
+  const expectedRevenue = expectedContracts * avgContractAmount;
+
+  // 지역별 계약률 (계약 발생 지역에 한해 학교 수 대비 비율 계산 — bounded count 쿼리)
+  const [regionRateData, setRegionRateData] = useState<{ region: string; rate: number }[]>([]);
+  useEffect(() => {
+    if (regionData.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        regionData.map(async (r) => {
+          const snap = await getCountFromServer(query(collection(db, "schools_summary"), where("region", "==", r.region)));
+          const total = snap.data().count;
+          return { region: r.region, rate: total > 0 ? Math.round((r.count / total) * 1000) / 10 : 0 };
+        })
+      );
+      if (!cancelled) setRegionRateData(results);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [regionData]);
+
+  const stageCounts = stats.stageCounts;
+
   return (
     <AppShell title="대시보드">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
-        <StatCard icon={School} label="학교DB 수" value={schoolsLoading ? "-" : schools.length} accent="primary" />
+        <StatCard icon={School} label="학교DB 수" value={stats.loading ? "-" : stats.totalSchools} accent="primary" />
         <StatCard icon={Building2} label="교육지원청 수" value={eduOffices.length} accent="violet" />
         <StatCard icon={PhoneCall} label="전화 완료" value={stageCounts["전화완료"] ?? 0} accent="primary" />
         <StatCard icon={CalendarClock} label="방문 예정" value={stageCounts["방문예정"] ?? 0} accent="amber" />
@@ -61,13 +106,62 @@ export default function DashboardPage() {
         <StatCard icon={CheckCircle2} label="설치 완료" value={stageCounts["설치완료"] ?? 0} accent="green" />
       </div>
 
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <StatCard
+          icon={TrendingUp}
+          label="예상 계약 건수 (AI 점수 기반)"
+          value={expectedContracts.toFixed(1)}
+          suffix="건"
+          accent="primary"
+        />
+        <StatCard icon={Wallet} label="예상 매출 (추정)" value={formatKRW(Math.round(expectedRevenue))} accent="green" />
+      </div>
+
       <div className="mt-4">
         <PipelineOverview counts={stageCounts} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <TopSchoolsList
+          title="오늘 방문 추천 TOP10"
+          schools={stats.topVisitTargets}
+          emptyHint="AI 계약가능성 점수를 매긴 학교가 아직 없습니다."
+        />
+        <TopSchoolsList
+          title="계약 가능성 TOP20"
+          schools={stats.topContractProbability}
+          emptyHint="AI 계약가능성 점수를 매긴 학교가 아직 없습니다."
+        />
+        <TopSchoolsList
+          title="이번주 전화 대상"
+          schools={stats.weeklyCallTargets}
+          emptyHint="신규 상태 학교가 없습니다."
+          showScore={false}
+        />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <RegionContractChart data={regionData} />
         <MonthlyContractChart data={monthlyData} />
+      </div>
+
+      <div className="mt-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>지역별 계약률 (계약 건수 / 해당 지역 학교 수)</CardTitle>
+          </CardHeader>
+          <CardBody className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={regionRateData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E9F2" vertical={false} />
+                <XAxis dataKey="region" tick={{ fontSize: 11, fill: "#667085" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#667085" }} axisLine={false} tickLine={false} unit="%" />
+                <Tooltip formatter={(v: number) => `${v}%`} cursor={{ fill: "#F5F7FB" }} />
+                <Bar dataKey="rate" fill="#2FBF71" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardBody>
+        </Card>
       </div>
     </AppShell>
   );

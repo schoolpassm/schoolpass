@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
-import { SchoolDoc } from "@/types";
+import { SchoolDoc, SchoolSummaryDoc } from "@/types";
+
+type ExportableSchool = Partial<SchoolDoc> | Partial<SchoolSummaryDoc>;
 
 const HEADERS = [
   "지역",
@@ -36,14 +38,14 @@ export interface SchoolRow {
 }
 
 /** 학교 목록을 엑셀(.xlsx) 파일로 다운로드한다. */
-export function exportSchoolsToExcel(schools: SchoolDoc[], fileName = "schools.xlsx") {
+export function exportSchoolsToExcel(schools: ExportableSchool[], fileName = "schools.xlsx") {
   const rows = schools.map((s) => ({
-    지역: s.region,
-    학교명: s.name,
-    학교급: s.level,
-    주소: s.address,
+    지역: s.region ?? "",
+    학교명: s.name ?? "",
+    학교급: s.level ?? "",
+    주소: (s as Partial<SchoolDoc>).address ?? "",
     전화번호: s.phone ?? "",
-    행정실: s.adminOfficePhone ?? "",
+    행정실: (s as Partial<SchoolDoc>).adminOfficePhone ?? "",
     이메일: s.email ?? "",
     교육지원청: s.eduOfficeId ?? "",
     학생수: s.studentCount ?? "",
@@ -51,7 +53,7 @@ export function exportSchoolsToExcel(schools: SchoolDoc[], fileName = "schools.x
     상태: s.status,
     등급: s.grade,
     태그: (s.tags ?? []).join(","),
-    비고: s.note ?? "",
+    비고: (s as Partial<SchoolDoc>).note ?? "",
   }));
   const ws = XLSX.utils.json_to_sheet(rows, { header: [...HEADERS] });
   const wb = XLSX.utils.book_new();
