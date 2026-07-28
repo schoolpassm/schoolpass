@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
     await assertAuthorized(req);
   } catch (e) {
     if (e instanceof Response) return e;
-    return NextResponse.json({ error: "인증 실패" }, { status: 401 });
+    const message = e instanceof Error ? e.message : "알 수 없는 오류";
+    console.error("NEIS sync auth error:", e);
+    return NextResponse.json({ error: `인증 처리 중 오류: ${message}` }, { status: 500 });
   }
 
   const body = await req.json().catch(() => ({}));
