@@ -50,7 +50,7 @@ export function KanbanBoard() {
 
 function KanbanColumn({ stage }: { stage: SchoolStatus }) {
   // 각 컬럼이 독립적으로 실시간 구독 — status 필터 + limit(100)으로 bounded read 유지
-  const { data: schools, loading } = useCollection<SchoolSummaryDoc>("schools_summary", [
+  const { data: schools, loading, error } = useCollection<SchoolSummaryDoc>("schools_summary", [
     where("status", "==", stage),
     orderBy("updatedAt", "desc"),
     limit(COLUMN_LIMIT),
@@ -68,6 +68,12 @@ function KanbanColumn({ stage }: { stage: SchoolStatus }) {
             snapshot.isDraggingOver && "bg-primary-50/40"
           )}
         >
+          {error && (
+            <p className="mx-2 mt-2 rounded-md bg-red-50 p-2 text-[10px] text-status-danger">
+              불러오기 오류: {error.message.slice(0, 120)}
+              {error.message.includes("indexes?create_composite") && " (콘솔 F12 에러 메시지의 링크를 클릭하면 인덱스가 자동 생성됩니다)"}
+            </p>
+          )}
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-sm font-semibold text-ink-900">{stage}</span>
             <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-500 shadow-card">

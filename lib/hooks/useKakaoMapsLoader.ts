@@ -15,12 +15,32 @@ function loadKakaoScript(appKey: string): Promise<void> {
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(
+        new Error(
+          "Kakao Maps SDK 로드 시간 초과. 광고차단 확장프로그램을 꺼보거나, Kakao Developers 콘솔 > 플랫폼 > Web에 이 도메인이 등록되어 있는지 확인하세요."
+        )
+      );
+    }, 8000);
+
     const script = document.createElement("script");
     script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=clusterer,services`;
     script.onload = () => {
-      window.kakao.maps.load(() => resolve());
+      clearTimeout(timeout);
+      try {
+        window.kakao.maps.load(() => resolve());
+      } catch (e) {
+        reject(new Error("Kakao Maps SDK 초기화 실패 — JavaScript 키 값이 올바른지 확인하세요."));
+      }
     };
-    script.onerror = () => reject(new Error("Kakao Maps SDK 로드 실패"));
+    script.onerror = () => {
+      clearTimeout(timeout);
+      reject(
+        new Error(
+          "Kakao Maps SDK 스크립트 로드 실패. 광고차단 확장프로그램, 방화벽, 또는 JavaScript 키 오타(공백 포함 여부)를 확인하세요."
+        )
+      );
+    };
     document.head.appendChild(script);
   });
 
