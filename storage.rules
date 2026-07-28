@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 학교별 첨부파일 (브로슈어/사진/제안서/계약서)
+    match /schools/{schoolId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.resource.size < 20 * 1024 * 1024; // 20MB 제한
+    }
+
+    // 구축사례 사진/PDF
+    match /cases/{caseId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.resource.size < 30 * 1024 * 1024;
+    }
+
+    // 전사 공용 파일함
+    match /company-files/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.resource.size < 30 * 1024 * 1024;
+    }
+  }
+}

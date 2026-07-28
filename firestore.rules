@@ -1,0 +1,135 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------
+    // 공통 헬퍼 함수
+    // ------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function myRole() {
+      return isSignedIn() ? myUser().role : null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && myRole() == 'admin';
+    }
+
+    function isManager() {
+      return isSignedIn() && (myRole() == 'admin' || myRole() == 'manager');
+    }
+
+    function isPartner() {
+      return isSignedIn() && myRole() == 'partner';
+    }
+
+    function isActive() {
+      return isSignedIn() && myUser().active == true;
+    }
+
+    // ------------------------------------------------------------------
+    // users: 본인 문서는 읽기 가능, 전체 관리는 admin만
+    // ------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == uid
+                      && request.resource.data.role == resource.data.role); // 본인 role 변경은 금지
+      allow delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------------------
+    // schools: admin/manager는 CRUD 전체, partner는 자신에게 연결된 학교만 읽기
+    // ------------------------------------------------------------------
+    match /schools/{schoolId} {
+      allow read: if isManager() || (isPartner() && resource.data.partnerId == myUser().partnerId);
+      allow create, update: if isManager() && isActive();
+      allow delete: if isAdmin();
+
+      match /activities/{activityId} {
+        allow read: if isManager() || isPartner();
+        allow create: if isManager() && isActive();
+        allow update, delete: if isAdmin();
+      }
+      match /quotes/{quoteId} {
+        allow read: if isManager();
+        allow write: if isManager() && isActive();
+      }
+      match /files/{fileId} {
+        allow read: if isManager() || isPartner();
+        allow write: if isManager() && isActive();
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // educationOffices
+    // ------------------------------------------------------------------
+    match /educationOffices/{officeId} {
+      allow read: if isManager();
+      allow write: if isManager() && isActive();
+
+      match /events/{eventId} {
+        allow read: if isManager();
+        allow write: if isManager() && isActive();
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // partners: admin/manager 전체 관리. partner 본인 문서는 읽기만 가능
+    // ------------------------------------------------------------------
+    match /partners/{partnerId} {
+      allow read: if isManager() || (isPartner() && myUser().partnerId == partnerId);
+      allow create, update, delete: if isManager() && isActive();
+    }
+
+    // ------------------------------------------------------------------
+    // cases (구축사례): 공개된 자료는 모두 읽기 가능, 쓰기는 manager 이상
+    // ------------------------------------------------------------------
+    match /cases/{caseId} {
+      allow read: if isSignedIn();
+      allow write: if isManager() && isActive();
+    }
+
+    // ------------------------------------------------------------------
+    // contracts: 정산/수수료 데이터는 admin/manager만 전체 조회.
+    // partner는 자신이 연결된 계약만 조회 가능
+    // ------------------------------------------------------------------
+    match /contracts/{contractId} {
+      allow read: if isManager() || (isPartner() && resource.data.partnerId == myUser().partnerId);
+      allow create, update: if isManager() && isActive();
+      allow delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------------------
+    // schedules
+    // ------------------------------------------------------------------
+    match /schedules/{scheduleId} {
+      allow read: if isManager();
+      allow write: if isManager() && isActive();
+    }
+
+    // ------------------------------------------------------------------
+    // files (전사 공용 파일함)
+    // ------------------------------------------------------------------
+    match /files/{fileId} {
+      allow read: if isSignedIn();
+      allow write: if isManager() && isActive();
+    }
+
+    // ------------------------------------------------------------------
+    // auditLogs: 시스템 기록용, 클라이언트에서는 생성만 허용
+    // ------------------------------------------------------------------
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isManager();
+      allow update, delete: if false;
+    }
+  }
+}
