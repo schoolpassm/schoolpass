@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useMemo, useRef, useState } from "react";
-import { Plus, Upload, Download, FileDown, Search, RefreshCw } from "lucide-react";
+import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
@@ -15,6 +15,7 @@ import { SchoolDoc, SchoolGrade, SchoolStatus } from "@/types";
 import { exportSchoolsToExcel, parseSchoolExcel, downloadSchoolTemplate } from "@/lib/excel";
 import { bulkImportSchools } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
+import { buildVisitRouteUrl } from "@/lib/route";
 
 export default function SchoolsPage() {
   const { data: schools, loading } = useCollection<SchoolDoc>("schools");
@@ -26,6 +27,7 @@ export default function SchoolsPage() {
   const [statusFilter, setStatusFilter] = useState<"전체" | SchoolStatus>("전체");
   const [gradeFilter, setGradeFilter] = useState<"전체" | SchoolGrade>("전체");
   const [importing, setImporting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const regions = useMemo(() => Array.from(new Set(schools.map((s) => s.region))).sort(), [schools]);
@@ -55,6 +57,26 @@ export default function SchoolsPage() {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleVisitRoute() {
+    const selectedSchools = filtered.filter((s) => selectedIds.has(s.id));
+    const addresses = selectedSchools.map((s) => s.address).filter(Boolean);
+    const url = buildVisitRouteUrl(addresses);
+    if (!url) {
+      alert("주소가 등록된 학교를 2곳 이상 선택해주세요.");
+      return;
+    }
+    window.open(url, "_blank");
   }
 
   return (
@@ -111,9 +133,14 @@ export default function SchoolsPage() {
         <span className="flex items-center px-2 text-xs text-ink-500">
           총 {filtered.length}개교 {loading && "· 불러오는 중..."}
         </span>
+        {selectedIds.size > 0 && (
+          <Button variant="secondary" size="sm" onClick={handleVisitRoute}>
+            <Route size={14} /> 선택 {selectedIds.size}곳 방문동선 생성
+          </Button>
+        )}
       </div>
 
-      <SchoolTable schools={filtered} />
+      <SchoolTable schools={filtered} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
 
       <SchoolFormModal open={formOpen} onClose={() => setFormOpen(false)} />
       <NeisSyncModal open={neisOpen} onClose={() => setNeisOpen(false)} />

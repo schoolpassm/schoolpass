@@ -32,6 +32,11 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
             </div>
             <p className="mt-1 text-sm text-ink-500">
               {school.region} · {school.level} · 학생 {school.studentCount ?? 0}명 · 담당 {school.ownerName ?? "-"}
+              {school.aiScore != null && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
+                  AI 계약가능성 {school.aiScore}점
+                </span>
+              )}
             </p>
             <p className="text-sm text-ink-500">{school.address}</p>
           </div>

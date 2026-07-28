@@ -6,12 +6,21 @@ import { SchoolDoc } from "@/types";
 import { StatusBadge, GradeBadge, Tag } from "@/components/ui/Badge";
 import { toTel, toSms, toMailto, toGoogleMaps } from "@/lib/utils";
 
-export function SchoolTable({ schools }: { schools: SchoolDoc[] }) {
+export function SchoolTable({
+  schools,
+  selectedIds,
+  onToggleSelect,
+}: {
+  schools: SchoolDoc[];
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-surface-border bg-white shadow-card">
       <table className="w-full min-w-[960px] text-sm">
         <thead>
           <tr className="border-b border-surface-border bg-surface-muted text-left text-xs text-ink-500">
+            {onToggleSelect && <th className="w-8 px-4 py-3"></th>}
             <th className="px-4 py-3 font-medium">등급</th>
             <th className="px-4 py-3 font-medium">학교명</th>
             <th className="px-4 py-3 font-medium">지역</th>
@@ -25,6 +34,16 @@ export function SchoolTable({ schools }: { schools: SchoolDoc[] }) {
         <tbody>
           {schools.map((s) => (
             <tr key={s.id} className="border-b border-surface-border last:border-0 hover:bg-surface-muted/60">
+              {onToggleSelect && (
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds?.has(s.id) ?? false}
+                    onChange={() => onToggleSelect(s.id)}
+                    className="h-4 w-4 rounded border-surface-border accent-primary-500"
+                  />
+                </td>
+              )}
               <td className="px-4 py-3">
                 <GradeBadge grade={s.grade} />
               </td>
@@ -77,7 +96,7 @@ export function SchoolTable({ schools }: { schools: SchoolDoc[] }) {
           ))}
           {schools.length === 0 && (
             <tr>
-              <td colSpan={8} className="px-4 py-16 text-center text-sm text-ink-300">
+              <td colSpan={onToggleSelect ? 9 : 8} className="px-4 py-16 text-center text-sm text-ink-300">
                 등록된 학교가 없습니다. 우측 상단의 &apos;학교 등록&apos; 버튼으로 추가하세요.
               </td>
             </tr>

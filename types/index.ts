@@ -74,6 +74,10 @@ export interface SchoolDoc extends BaseDoc {
   neisSchoolCode?: string; // NEIS SD_SCHUL_CODE, 동기화 매칭 기준 키
   syncedFromNeis?: boolean; // NEIS 동기화로 생성된 레코드인지 여부
   lastSyncedAt?: Timestamp | null; // 마지막 NEIS 동기화 시각
+  // --- AI 영업도구 ---
+  aiScore?: number | null; // AI가 산정한 계약 가능성 점수 (0~100)
+  aiScoreReason?: string; // 점수 산정 근거
+  aiScoreUpdatedAt?: Timestamp | null;
 }
 
 /** schools/{schoolId}/activities - 전화/이메일/문자/방문 기록 통합 타임라인 */

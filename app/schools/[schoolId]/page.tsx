@@ -8,6 +8,7 @@ import { SchoolDetailHeader } from "@/components/schools/SchoolDetailHeader";
 import { ActivityTimeline } from "@/components/schools/ActivityTimeline";
 import { QuotesTab } from "@/components/schools/QuotesTab";
 import { FilesTab } from "@/components/schools/FilesTab";
+import { AiToolsPanel } from "@/components/schools/AiToolsPanel";
 import { Tabs } from "@/components/ui/Tabs";
 import { Card, CardBody } from "@/components/ui/Card";
 import { SchoolDoc } from "@/types";
@@ -22,6 +23,7 @@ export default function SchoolDetailPage({ params }: { params: { schoolId: strin
       {school && (
         <div className="space-y-4">
           <SchoolDetailHeader school={school} />
+          <AiToolsPanel schoolId={school.id} schoolName={school.name} />
           <Card>
             <CardBody>
               <Tabs
