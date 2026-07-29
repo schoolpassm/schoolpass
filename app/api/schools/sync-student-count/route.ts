@@ -106,8 +106,8 @@ async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStuden
 
 /**
  * 학교알리미 학생수/학급수를 schools_detail(+schools_summary 학생수)에 반영한다.
- * 2026년 이후 발급된 인증키는 sggCode(시군구)가 필수라서, 전국(00/00000) 와일드카드를
- * 먼저 시도해보고 비어있으면 선택한 시도(sidoCode)의 모든 시군구를 순회한다.
+ * 이 API는 sidoCode와 sggCode가 둘 다 필수라서(전국 일괄 조회 개념이 없음),
+ * 반드시 선택한 시도(sidoCode)의 모든 시군구를 순회해서 조회한다.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -124,49 +124,31 @@ export async function POST(req: NextRequest) {
     Array.isArray(body?.levelCodes) && body.levelCodes.length > 0
       ? body.levelCodes
       : SCHOOLINFO_LEVEL_CODES.map((l) => l.code);
-  const sidoCode: string | undefined = body?.sidoCode; // 미지정 시 전국 와일드카드만 시도
+  const sidoCode: string | undefined = body?.sidoCode;
+
+  if (!sidoCode) {
+    return NextResponse.json({ error: "시/도를 선택해주세요." }, { status: 400 });
+  }
 
   const db = getAdminDb();
   let matched = 0;
   let matchedByName = 0;
   let unmatched = 0;
-  let usedWildcard = false;
   let districtsAttempted = 0;
   let districtsSucceeded = 0;
   let totalRowsFetched = 0;
-  let wildcardSampleError: string | null = null;
   let districtSampleError: string | null = null;
   const failedLevels: string[] = [];
 
+  const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
+  const regionHint = districts[0]?.sidoName; // schools_detail의 region 필드(NEIS 시도명)와 동일한 표기
+
   for (const levelCode of levelCodes) {
-    // 1) 전국 와일드카드 우선 시도 — 실패해도(신규 키는 대부분 거부됨) 아래 시군구 순회로 계속 진행한다.
-    let wildcardWorked = false;
     try {
-      const wildcardRows = await fetchStudentCounts(year, levelCode, "00000");
-      if (wildcardRows.length > 0) {
-        wildcardWorked = true;
-        usedWildcard = true;
-        totalRowsFetched += wildcardRows.length;
-        const r = await applyRows(db, wildcardRows);
-        matched += r.matched;
-        matchedByName += r.matchedByName;
-        unmatched += r.unmatched;
-      }
-    } catch (err) {
-      if (!wildcardSampleError) wildcardSampleError = err instanceof Error ? err.message : String(err);
-    }
-    if (wildcardWorked) continue;
-
-    // 2) 와일드카드가 안 통하면 선택한 시도의 시군구를 전부 순회
-    if (!sidoCode) continue; // 시도를 안 골랐으면 여기서 중단 (프론트에서 재요청 유도)
-
-    try {
-      const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
-      const regionHint = districts[0]?.sidoName; // schools_detail의 region 필드(NEIS 시도명)와 동일한 표기
       districtsAttempted += districts.length;
       const districtResults = await mapWithConcurrency(districts, 8, async (d) => {
         try {
-          const rows = await fetchStudentCounts(year, levelCode, d.sggCode);
+          const rows = await fetchStudentCounts(year, levelCode, d.sggCode, d.sidoCode);
           districtsSucceeded += 1;
           return rows;
         } catch (err) {
@@ -193,8 +175,8 @@ export async function POST(req: NextRequest) {
     matchedByName,
     unmatched,
     failedLevels,
-    usedWildcard,
-    requiresSido: !usedWildcard && !sidoCode,
-    debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, wildcardSampleError, districtSampleError },
+    usedWildcard: false,
+    requiresSido: false,
+    debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, wildcardSampleError: null, districtSampleError },
   });
 }
