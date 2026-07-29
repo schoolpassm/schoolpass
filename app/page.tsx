@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   School,
   Building2,
@@ -24,7 +25,7 @@ import { TopSchoolsList } from "@/components/dashboard/TopSchoolsList";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
-import { EducationOfficeDoc, ContractDoc } from "@/types";
+import { EducationOfficeDoc, ContractDoc, PartnerDoc } from "@/types";
 import { formatKRW } from "@/lib/commission";
 import { db } from "@/lib/firebase";
 import {
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const stats = useDashboardStats();
   const { data: eduOffices } = useCollection<EducationOfficeDoc>("educationOffices");
   const { data: contracts } = useCollection<ContractDoc>("contracts");
+  const { data: partners } = useCollection<PartnerDoc>("partners");
 
   const regionData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -160,6 +162,45 @@ export default function DashboardPage() {
                 <Bar dataKey="rate" fill="#2FBF71" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      </div>
+      <div className="mt-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>파트너 실적</CardTitle>
+            <Link href="/partners" className="text-xs font-medium text-primary-600 hover:underline">
+              전체 보기 →
+            </Link>
+          </CardHeader>
+          <CardBody className="p-0">
+            {partners.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs text-ink-300">등록된 파트너가 없습니다.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-border bg-surface-muted text-left text-xs text-ink-500">
+                    <th className="px-5 py-2.5 font-medium">파트너</th>
+                    <th className="px-5 py-2.5 font-medium">계약건수</th>
+                    <th className="px-5 py-2.5 font-medium">매출</th>
+                    <th className="px-5 py-2.5 font-medium">수수료</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...partners]
+                    .sort((a, b) => (b.totalRevenue ?? 0) - (a.totalRevenue ?? 0))
+                    .slice(0, 5)
+                    .map((p) => (
+                      <tr key={p.id} className="border-b border-surface-border last:border-0">
+                        <td className="px-5 py-2.5 font-medium text-ink-900">{p.name}</td>
+                        <td className="px-5 py-2.5 text-ink-500">{p.contractCount ?? 0}건</td>
+                        <td className="px-5 py-2.5 text-ink-500">{formatKRW(p.totalRevenue ?? 0)}</td>
+                        <td className="px-5 py-2.5 font-semibold text-primary-600">{formatKRW(p.totalCommission ?? 0)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
           </CardBody>
         </Card>
       </div>

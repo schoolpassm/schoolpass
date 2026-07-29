@@ -6,13 +6,14 @@ import { Suspense } from "react";
 import { useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2 } from "lucide-react";
+import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
 import { SchoolTable } from "@/components/schools/SchoolTable";
 import { SchoolFormModal } from "@/components/schools/SchoolFormModal";
 import { NeisSyncModal } from "@/components/schools/NeisSyncModal";
+import { StudentCountSyncModal } from "@/components/schools/StudentCountSyncModal";
 import { useSchoolsPaginated } from "@/lib/hooks/useSchoolsPaginated";
 import { useInfiniteScrollSentinel } from "@/lib/hooks/useInfiniteScrollSentinel";
 import { SchoolGrade, SchoolLevel, SchoolStatus } from "@/types";
@@ -37,6 +38,7 @@ function SchoolsPageInner() {
   const searchParams = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [neisOpen, setNeisOpen] = useState(false);
+  const [studentCountOpen, setStudentCountOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [namePrefix, setNamePrefix] = useState("");
   // 대시보드 통계카드 클릭 등으로 ?status=계약 형태 URL을 넘어오면 그 값으로 초기 필터를 맞춘다.
@@ -137,6 +139,9 @@ function SchoolsPageInner() {
           <Button variant="secondary" size="sm" onClick={() => setNeisOpen(true)}>
             <RefreshCw size={14} /> 학교알리미 동기화
           </Button>
+          <Button variant="secondary" size="sm" onClick={() => setStudentCountOpen(true)}>
+            <Users size={14} /> 학생수 동기화
+          </Button>
           <Button variant="secondary" size="sm" onClick={downloadSchoolTemplate}>
             <FileDown size={14} /> 템플릿
           </Button>
@@ -220,6 +225,7 @@ function SchoolsPageInner() {
 
       <SchoolFormModal open={formOpen} onClose={() => setFormOpen(false)} />
       <NeisSyncModal open={neisOpen} onClose={() => setNeisOpen(false)} />
+      <StudentCountSyncModal open={studentCountOpen} onClose={() => setStudentCountOpen(false)} />
     </AppShell>
   );
 }

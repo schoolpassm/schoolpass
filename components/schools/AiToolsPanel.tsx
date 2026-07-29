@@ -48,6 +48,9 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
   const [resultText, setResultText] = useState("");
   const [score, setScore] = useState<number | null>(null);
   const [factors, setFactors] = useState<{ label: string; positive: boolean }[]>([]);
+  const [neighbors, setNeighbors] = useState<
+    { name: string; distanceKm?: number; studentCount?: number; sameEduOffice: boolean; sameLevel: boolean }[]
+  >([]);
   const [saved, setSaved] = useState(false);
 
   async function handleRun(action: AiAction) {
@@ -58,12 +61,14 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
     setResultText("");
     setScore(null);
     setFactors([]);
+    setNeighbors([]);
     setSaved(false);
     try {
       const result = await generateAi(firebaseUser, schoolId, action);
       setResultText(result.text);
       setScore(result.score);
       setFactors(result.factors ?? []);
+      setNeighbors(result.installedNeighbors ?? []);
     } catch (e: any) {
       setError(e.message || "생성 중 오류가 발생했습니다.");
     } finally {
@@ -160,6 +165,26 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+            {activeAction === "nearby_cases" && neighbors.length > 0 && (
+              <div className="mb-3 space-y-1.5">
+                {neighbors.map((n, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-white p-2.5 shadow-card">
+                    <div className="flex items-center gap-2">
+                      <Building2 size={14} className="text-emerald-500" />
+                      <span className="text-sm font-medium text-ink-900">{n.name}</span>
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+                        현재 운영중
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-ink-500">
+                      {n.distanceKm != null && <span>{n.distanceKm.toFixed(1)}km</span>}
+                      {n.studentCount != null && <span>학생수 {n.studentCount}명</span>}
+                      {n.sameEduOffice && <span className="text-primary-600">같은 교육지원청</span>}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             <p className="whitespace-pre-wrap text-sm text-ink-700">{resultText}</p>
