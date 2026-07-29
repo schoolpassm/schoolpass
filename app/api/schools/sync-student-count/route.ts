@@ -36,7 +36,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStudentCountRow[]) {
+async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStudentCountRow[], regionHint?: string) {
   let matched = 0;
   let matchedByName = 0;
   let unmatched = 0;
@@ -46,8 +46,9 @@ async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStuden
   for (const chunk of chunks) {
     const snaps = await Promise.all(chunk.map((row) => db.collection("schools_detail").doc(row.SCHUL_CODE).get()));
 
-    // 1차: SCHUL_CODE로 문서ID 직접 매칭 실패한 것들 모아서 2차: 학교명으로 재시도
+    // 1차: SCHUL_CODE로 문서ID 직접 매칭 실패한 것들 모아서 2차: 학교명(+지역)으로 재시도
     // (학교알리미 코드와 NEIS 코드 체계가 달라 코드 매칭이 거의 안 통하는 경우가 있음 — 이름 매칭이 사실상 주 경로)
+    // 지역까지 같이 대조해야 동명 학교(전국에 흔한 이름)가 엉뚱하게 매칭되는 것을 막을 수 있다.
     const needsNameLookup: { row: SchoolinfoStudentCountRow; idx: number }[] = [];
     snaps.forEach((snap, idx) => {
       if (!snap.exists) needsNameLookup.push({ row: chunk[idx], idx });
@@ -55,8 +56,13 @@ async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStuden
 
     const nameLookupResults = await Promise.all(
       needsNameLookup.map(async ({ row }) => {
-        const q = await db.collection("schools_summary").where("name", "==", row.SCHUL_NM).limit(1).get();
-        return q.empty ? null : q.docs[0].id;
+        let q: FirebaseFirestore.Query = db.collection("schools_summary").where("name", "==", row.SCHUL_NM);
+        if (regionHint) q = q.where("region", "==", regionHint);
+        const snap = await q.limit(2).get();
+        // 동명 학교가 2건 이상 걸리면(지역 힌트가 없거나 같은 지역에 동명교가 실제로 있는 경우)
+        // 잘못 반영할 위험이 있으니 안전하게 건너뛴다.
+        if (snap.size !== 1) return null;
+        return snap.docs[0].id;
       })
     );
     const nameMatchMap = new Map<number, string>();
@@ -155,6 +161,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
+      const regionHint = districts[0]?.sidoName; // schools_detail의 region 필드(NEIS 시도명)와 동일한 표기
       districtsAttempted += districts.length;
       const districtResults = await mapWithConcurrency(districts, 8, async (d) => {
         try {
@@ -168,7 +175,7 @@ export async function POST(req: NextRequest) {
       });
       const allRows = districtResults.flat();
       totalRowsFetched += allRows.length;
-      const r = await applyRows(db, allRows);
+      const r = await applyRows(db, allRows, regionHint);
       matched += r.matched;
       matchedByName += r.matchedByName;
       unmatched += r.unmatched;
