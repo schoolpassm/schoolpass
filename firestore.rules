@@ -73,12 +73,13 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
-    // schools_summary: 목록/지도/칸반 전용 경량 사본 — schools_detail과 동일한 권한 체계
-    // 지도/목록에서 대량 조회되므로 partner도 폭넓게 읽을 수 있게 하되, partnerId 일치하는 것만 노출은
-    // 클라이언트 쿼리 단에서 필터링 (요약 문서는 민감정보가 적어 조회 자체는 매니저 이상으로 제한)
+    // schools_summary: 목록/지도/칸반/대시보드 집계(count) 전용 경량 사본.
+    // count() 집계쿼리는 resource.data를 참조하는 규칙과 호환되지 않아
+    // (문서를 읽지 않고 개수만 세는 연산이라 문서 필드 조건을 평가할 수 없음),
+    // 여기서는 partner 개별 조건 없이 isManager()만으로 단순하게 허용한다.
     // ------------------------------------------------------------------
     match /schools_summary/{schoolId} {
-      allow read: if isManager() || (isPartner() && resource.data.partnerId == myUser().partnerId);
+      allow read: if isManager();
       allow write: if isManager() && isActive();
     }
 
