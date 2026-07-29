@@ -4,9 +4,10 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { UserDoc, UserRole } from "@/types";
 import { db } from "@/lib/firebase";
@@ -16,14 +17,37 @@ const ROLE_LABEL: Record<UserRole, string> = { admin: "관리자", manager: "매
 
 export default function SettingsPage() {
   const { data: users, loading } = useCollection<UserDoc>("users");
-  const { isAdmin } = useAuth();
+  const { isAdmin, firebaseUser } = useAuth();
+  const [syncing, setSyncing] = useState<string | null>(null);
+
+  async function syncClaims(targetUid?: string) {
+    if (!firebaseUser) return;
+    setSyncing(targetUid ?? "self");
+    try {
+      const token = await firebaseUser.getIdToken();
+      await fetch("/api/users/sync-claims", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(targetUid ? { targetUid } : {}),
+      });
+      if (!targetUid) {
+        // 내 권한을 동기화한 경우, 새 클레임이 실제로 로그인 토큰에 반영되도록 강제 새로고침
+        await firebaseUser.getIdToken(true);
+        alert("권한 동기화 완료! 대시보드를 새로고침해보세요.");
+      }
+    } finally {
+      setSyncing(null);
+    }
+  }
 
   async function changeRole(uid: string, role: UserRole) {
     await updateDoc(doc(db, "users", uid), { role });
+    await syncClaims(uid); // Firestore 권한과 로그인 토큰 클레임을 항상 같이 갱신
   }
 
   async function toggleActive(uid: string, active: boolean) {
     await updateDoc(doc(db, "users", uid), { active });
+    await syncClaims(uid);
   }
 
   return (
@@ -34,6 +58,18 @@ export default function SettingsPage() {
           <p className="text-xs text-amber-700">관리자 권한이 없어 조회만 가능합니다. 계정 변경은 admin 권한이 필요합니다.</p>
         </Card>
       )}
+
+      <Card className="mb-4 flex items-center justify-between p-4">
+        <div>
+          <p className="text-sm font-semibold text-ink-900">내 권한 동기화</p>
+          <p className="text-xs text-ink-500">
+            대시보드 통계가 "권한 없음" 오류로 안 뜨면, 최초 1회 이 버튼을 눌러 로그인 토큰에 권한 정보를 반영하세요.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => syncClaims()} disabled={syncing === "self"}>
+          <RefreshCw size={14} className={syncing === "self" ? "animate-spin" : ""} /> 내 권한 동기화
+        </Button>
+      </Card>
 
       <Card>
         <CardHeader>

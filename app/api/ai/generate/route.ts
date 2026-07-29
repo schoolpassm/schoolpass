@@ -82,6 +82,36 @@ async function computeFactorsAndNeighbors(
     computedFactors.push({ label: `학급수 ${school.classCount}개로 많음`, positive: true });
   }
 
+  if (typeof school.teacherCount === "number" && school.teacherCount > 0) {
+    computedFactors.push({ label: `교직원 ${school.teacherCount}명`, positive: school.teacherCount >= 50 });
+  }
+
+  if (typeof school.financeRevenueTotal === "number" && school.financeRevenueTotal > 0) {
+    const eok = school.financeRevenueTotal / 100000000;
+    if (eok >= 5) {
+      computedFactors.push({ label: `학교회계 세입 규모 약 ${eok.toFixed(1)}억원으로 큼`, positive: true });
+    }
+  }
+
+  if (typeof school.developmentFundTotal === "number" && school.developmentFundTotal > 0) {
+    const man = Math.round(school.developmentFundTotal / 10000);
+    computedFactors.push({ label: `학교발전기금 약 ${man.toLocaleString()}만원 보유`, positive: true });
+  }
+
+  if (school.supportFacilities) {
+    const f = school.supportFacilities;
+    const count = [f.gym, f.auditorium, f.pool, f.careerRoom].filter((v: number) => v > 0).length;
+    if (count >= 2) {
+      computedFactors.push({ label: `학생지원시설 우수 (체육관·강당·수영장·상담실 중 ${count}종 보유)`, positive: true });
+    }
+  }
+
+  if (school.facilitySafetyOk === true) {
+    computedFactors.push({ label: "시설안전 점검 완료 (이상없음)", positive: true });
+  } else if (school.facilitySafetyOk === false) {
+    computedFactors.push({ label: "시설안전 점검 결과 관리 필요", positive: false });
+  }
+
   if (school.isNewlyOpened) {
     computedFactors.push({ label: "신설 학교 (예산 편성 초기 접근 유리)", positive: true });
   }

@@ -1,7 +1,11 @@
 /**
- * 학교알리미(schoolinfo.go.kr) OpenAPI 연동 — 학년별·학급별 학생수(apiType=09)
+ * 학교알리미(schoolinfo.go.kr) OpenAPI 연동.
  * 나이스 개방포털(open.neis.go.kr)과는 완전히 별개의 사이트/인증키다.
  * 인증키 발급: schoolinfo.go.kr 로그인(네이버/카카오) → OpenAPI → 인증키 신청
+ *
+ * apiType별로 출력 필드가 다르므로, 카테고리마다 apiType + "필요한 필드만 SchoolDoc patch로
+ * 변환하는 함수"를 SCHOOLINFO_CATEGORIES에 등록해두는 방식으로 일반화했다.
+ * 새 카테고리를 추가하려면 이 파일에 항목 하나만 추가하면 된다 (라우트/UI 쪽 로직은 그대로 재사용).
  */
 
 const SCHOOLINFO_BASE_URL = "http://www.schoolinfo.go.kr/openApi.do";
@@ -14,11 +18,88 @@ export const SCHOOLINFO_LEVEL_CODES: { code: string; label: string }[] = [
   { code: "05", label: "특수학교" },
 ];
 
-export interface SchoolinfoStudentCountRow {
-  SCHUL_CODE: string; // 정보공시 학교코드 (NEIS SD_SCHUL_CODE와 동일한 표준학교코드로 간주하고 매칭)
+export type SchoolinfoCategory =
+  | "student_count"
+  | "teacher_count"
+  | "finance"
+  | "development_fund"
+  | "support_facility"
+  | "facility_safety"
+  | "school_land"
+  | "health";
+
+export interface SchoolinfoCategoryMeta {
+  apiType: string;
+  label: string;
+}
+
+export const SCHOOLINFO_CATEGORIES: Record<SchoolinfoCategory, SchoolinfoCategoryMeta> = {
+  student_count: { apiType: "09", label: "학생수·학급수" },
+  teacher_count: { apiType: "22", label: "교직원수" },
+  finance: { apiType: "27", label: "학교회계(세입 규모)" },
+  development_fund: { apiType: "30", label: "학교발전기금" },
+  support_facility: { apiType: "18", label: "학생지원시설" },
+  facility_safety: { apiType: "44", label: "시설안전 점검" },
+  school_land: { apiType: "16", label: "학교용지 면적" },
+  health: { apiType: "38", label: "보건관리" },
+};
+
+export interface SchoolinfoRow {
+  SCHUL_CODE: string;
   SCHUL_NM: string;
-  COL_S_SUM?: string; // 학생수(계)
-  COL_C_SUM?: string; // 학급수(계)
+  [key: string]: unknown;
+}
+
+/** 카테고리별 응답 로우를 schools_detail/summary에 반영할 필드 patch로 변환한다. */
+export function extractFieldsForCategory(category: SchoolinfoCategory, row: SchoolinfoRow): Record<string, unknown> {
+  const num = (v: unknown) => {
+    const n = parseInt(String(v ?? ""), 10);
+    return isNaN(n) ? undefined : n;
+  };
+
+  switch (category) {
+    case "student_count": {
+      const studentCount = num(row.COL_S_SUM);
+      const classCount = num(row.COL_C_SUM);
+      return { ...(studentCount != null && { studentCount }), ...(classCount != null && { classCount }) };
+    }
+    case "teacher_count": {
+      const teacherCount = num(row.COL_S); // 총계(계)
+      return teacherCount != null ? { teacherCount } : {};
+    }
+    case "finance": {
+      const amounts = ["AMT1", "AMT2", "AMT3", "AMT4", "AMT5", "AMT6"].map((k) => num(row[k]) ?? 0);
+      const total = amounts.reduce((a, b) => a + b, 0);
+      return total > 0 ? { financeRevenueTotal: total } : {};
+    }
+    case "development_fund": {
+      const total = num(row.AMT_SMTOT);
+      return total != null ? { developmentFundTotal: total } : {};
+    }
+    case "support_facility": {
+      const gym = num(row.COL_1) ?? 0;
+      const auditorium = num(row.COL_2) ?? 0;
+      const pool = num(row.SWMPL_FGR) ?? 0;
+      const careerRoom = num(row.COSE_CNSRM_FGR) ?? 0;
+      return { supportFacilities: { gym, auditorium, pool, careerRoom } };
+    }
+    case "facility_safety": {
+      const checkedDate = row.CK_YMD ? String(row.CK_YMD) : undefined;
+      const resultCode = row.CK_RSLT_CODE ? String(row.CK_RSLT_CODE) : undefined;
+      return {
+        ...(checkedDate && { facilitySafetyCheckedDate: checkedDate }),
+        ...(resultCode && { facilitySafetyOk: resultCode !== "" }),
+      };
+    }
+    case "school_land": {
+      const area = num(row.COL_5);
+      return area != null ? { schoolLandArea: area } : {};
+    }
+    case "health": {
+      const usageCount = num(row.ALL_IFRMA_UTILZ_STDNT_FGR);
+      return usageCount != null ? { healthRoomUsageCount: usageCount } : {};
+    }
+  }
 }
 
 /**
@@ -46,12 +127,13 @@ function findRecordArray(node: unknown, depth = 0): any[] | null {
   return null;
 }
 
-export async function fetchStudentCounts(
+export async function fetchSchoolinfoRows(
+  category: SchoolinfoCategory,
   year: number,
   schulKndCode: string,
   sggCode: string,
   sidoCode: string
-): Promise<SchoolinfoStudentCountRow[]> {
+): Promise<SchoolinfoRow[]> {
   const apiKey = process.env.SCHOOLINFO_API_KEY;
   if (!apiKey) {
     throw new Error("SCHOOLINFO_API_KEY 환경변수가 설정되지 않았습니다. schoolinfo.go.kr에서 인증키를 발급받으세요.");
@@ -59,7 +141,7 @@ export async function fetchStudentCounts(
 
   const params = new URLSearchParams({
     apiKey,
-    apiType: "09",
+    apiType: SCHOOLINFO_CATEGORIES[category].apiType,
     pbanYr: String(year),
     schulKndCode,
     sggCode,
@@ -80,15 +162,15 @@ export async function fetchStudentCounts(
     throw new Error(`학교알리미 응답이 JSON이 아님: ${rawText.slice(0, 200)}`);
   }
 
-  // 일부 정부 OpenAPI는 에러도 200 OK로 내려주고 result 코드로만 구분한다 (예: {"resultCode":"...", "resultMsg":"..."})
+  const OK_CODES = new Set(["success", "00", "0", "info-000", "ok"]);
   if (json && typeof json === "object" && ("resultCode" in (json as any) || "RESULT" in (json as any))) {
     const errObj = (json as any).resultCode ? json : (json as any).RESULT;
     const code = errObj?.resultCode ?? errObj?.CODE;
     const msg = errObj?.resultMsg ?? errObj?.MESSAGE;
-    if (code && String(code) !== "00" && String(code).toUpperCase() !== "INFO-000") {
+    if (code && !OK_CODES.has(String(code).toLowerCase())) {
       throw new Error(`학교알리미 API 오류 응답 [${code}]: ${msg ?? rawText.slice(0, 200)}`);
     }
   }
 
-  return findRecordArray(json) ?? [];
+  return (findRecordArray(json) ?? []) as SchoolinfoRow[];
 }

@@ -140,7 +140,7 @@ function SchoolsPageInner() {
             <RefreshCw size={14} /> 학교알리미 동기화
           </Button>
           <Button variant="secondary" size="sm" onClick={() => setStudentCountOpen(true)}>
-            <Users size={14} /> 학생수 동기화
+            <Users size={14} /> 공공데이터 동기화
           </Button>
           <Button variant="secondary" size="sm" onClick={downloadSchoolTemplate}>
             <FileDown size={14} /> 템플릿

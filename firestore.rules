@@ -26,6 +26,13 @@ service cloud.firestore {
       return isSignedIn() && (myRole() == 'admin' || myRole() == 'manager');
     }
 
+    // count() 등 집계쿼리는 get()으로 다른 문서를 읽는 규칙과 호환되지 않는다.
+    // 이 함수는 Firestore 문서 조회(get()) 없이 로그인 토큰의 커스텀 클레임만으로 판단해
+    // 집계쿼리에서도 사용할 수 있다. /api/users/sync-claims 로 클레임을 최신화해둬야 정확하다.
+    function isManagerByClaim() {
+      return isSignedIn() && request.auth.token.role in ['admin', 'manager'];
+    }
+
     function isPartner() {
       return isSignedIn() && myRole() == 'partner';
     }
@@ -74,12 +81,12 @@ service cloud.firestore {
 
     // ------------------------------------------------------------------
     // schools_summary: 목록/지도/칸반/대시보드 집계(count) 전용 경량 사본.
-    // count() 집계쿼리는 resource.data를 참조하는 규칙과 호환되지 않아
-    // (문서를 읽지 않고 개수만 세는 연산이라 문서 필드 조건을 평가할 수 없음),
-    // 여기서는 partner 개별 조건 없이 isManager()만으로 단순하게 허용한다.
+    // count() 집계쿼리는 get()으로 다른 문서를 읽는 규칙과 호환되지 않으므로,
+    // 여기서만 예외적으로 커스텀 클레임 기반 isManagerByClaim()을 사용한다.
+    // (로그인 계정은 /api/users/sync-claims 로 클레임을 한 번 동기화해둬야 함 — 관리자 설정 화면 참고)
     // ------------------------------------------------------------------
     match /schools_summary/{schoolId} {
-      allow read: if isManager();
+      allow read: if isManagerByClaim();
       allow write: if isManager() && isActive();
     }
 

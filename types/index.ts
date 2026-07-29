@@ -87,6 +87,15 @@ export interface SchoolDoc extends BaseDoc {
   aiScoreFactors?: AiScoreFactor[]; // 구조화된 근거 목록 (뱃지 렌더링용)
   aiScoreUpdatedAt?: Timestamp | null;
   lastContactedAt?: Timestamp | null; // 최근 접촉일 (활동기록 생성 시 자동 갱신, "이번주 전화 대상" 계산용)
+  // --- 학교알리미 추가 공시데이터 (교직원수/학교회계/발전기금/시설/시설안전/학교용지/보건) ---
+  teacherCount?: number; // 교직원수(총계)
+  financeRevenueTotal?: number; // 학교회계 세입 규모
+  developmentFundTotal?: number; // 학교발전기금 금액합계
+  supportFacilities?: { gym: number; auditorium: number; pool: number; careerRoom: number }; // 학생지원시설
+  facilitySafetyCheckedDate?: string; // 시설안전 최종점검일자 (YYYYMMDD)
+  facilitySafetyOk?: boolean; // 시설안전 점검 이상없음 여부
+  schoolLandArea?: number; // 학교용지 면적 합계(㎡)
+  healthRoomUsageCount?: number; // 연간 보건실 이용건수
 }
 
 /**
