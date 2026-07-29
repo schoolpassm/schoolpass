@@ -4,16 +4,24 @@ import { useState } from "react";
 import { Users } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Field, Input } from "@/components/ui/Input";
+import { Field, Input, Select } from "@/components/ui/Input";
 import { useAuth } from "@/lib/auth-context";
 import { SCHOOLINFO_LEVEL_CODES } from "@/lib/schoolinfo";
+import { SIGUNGU_CODES } from "@/lib/schoolinfo-regions";
+
+const SIDO_OPTIONS = Array.from(
+  new Map(SIGUNGU_CODES.filter((s) => s.sidoCode !== "00").map((s) => [s.sidoCode, s.sidoName])).entries()
+);
 
 export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { firebaseUser } = useAuth();
   const [year, setYear] = useState(new Date().getFullYear());
   const [levels, setLevels] = useState<Set<string>>(new Set(SCHOOLINFO_LEVEL_CODES.map((l) => l.code)));
+  const [sidoCode, setSidoCode] = useState(SIDO_OPTIONS[0]?.[0] ?? "");
   const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<{ matched: number; unmatched: number } | null>(null);
+  const [result, setResult] = useState<{ matched: number; unmatched: number; usedWildcard: boolean; requiresSido: boolean } | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   function toggleLevel(code: string) {
@@ -35,11 +43,16 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
       const res = await fetch("/api/schools/sync-student-count", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ year, levelCodes: Array.from(levels) }),
+        body: JSON.stringify({ year, levelCodes: Array.from(levels), sidoCode }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "동기화 실패");
-      setResult({ matched: json.matched, unmatched: json.unmatched });
+      setResult({
+        matched: json.matched,
+        unmatched: json.unmatched,
+        usedWildcard: json.usedWildcard,
+        requiresSido: json.requiresSido,
+      });
     } catch (e: any) {
       setError(e.message || "동기화 중 오류가 발생했습니다.");
     } finally {
@@ -57,6 +70,15 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
         <Field label="공시연도 (최근 3년만 제공)">
           <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} />
         </Field>
+        <Field label="시/도 (전국 일괄 조회가 안 될 경우 이 지역 단위로 조회)">
+          <Select value={sidoCode} onChange={(e) => setSidoCode(e.target.value)}>
+            {SIDO_OPTIONS.map(([code, name]) => (
+              <option key={code} value={code}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <div>
           <p className="mb-1.5 text-xs font-medium text-ink-500">대상 학교급</p>
           <div className="flex flex-wrap gap-2">
@@ -72,6 +94,8 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
         {result && (
           <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
             동기화 완료 — 매칭 {result.matched}건 반영, 미매칭 {result.unmatched}건
+            {result.usedWildcard && " (전국 일괄 조회 성공)"}
+            {!result.usedWildcard && !result.requiresSido && " (선택하신 시/도 단위로 조회함)"}
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-xs text-status-danger">{error}</div>}
@@ -81,7 +105,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
             닫기
           </Button>
           <Button onClick={handleSync} disabled={syncing || levels.size === 0}>
-            <Users size={14} /> {syncing ? "동기화 중..." : "동기화 실행"}
+            <Users size={14} /> {syncing ? "동기화 중... (시도 전체라 몇 분 걸릴 수 있음)" : "동기화 실행"}
           </Button>
         </div>
       </div>

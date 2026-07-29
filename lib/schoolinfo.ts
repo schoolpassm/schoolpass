@@ -49,7 +49,8 @@ function findRecordArray(node: unknown, depth = 0): any[] | null {
 export async function fetchStudentCounts(
   year: number,
   schulKndCode: string,
-  sidoCode?: string
+  sidoCode: string,
+  sggCode: string
 ): Promise<SchoolinfoStudentCountRow[]> {
   const apiKey = process.env.SCHOOLINFO_API_KEY;
   if (!apiKey) {
@@ -61,8 +62,9 @@ export async function fetchStudentCounts(
     apiType: "09",
     pbanYr: String(year),
     schulKndCode,
+    sidoCode,
+    sggCode,
   });
-  if (sidoCode) params.set("sidoCode", sidoCode);
 
   const res = await fetch(`${SCHOOLINFO_BASE_URL}?${params.toString()}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`학교알리미 API 요청 실패: ${res.status}`);
