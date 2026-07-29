@@ -2,8 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
@@ -20,16 +22,34 @@ import { useAuth } from "@/lib/auth-context";
 import { buildVisitRouteUrl } from "@/lib/route";
 import { NEIS_REGION_CODES } from "@/lib/neis";
 
+// useSearchParams()를 쓰는 부분은 반드시 Suspense 경계 안에 있어야 하므로
+// 실제 페이지 내용은 SchoolsPageInner로 분리하고, 아래에서 감싸서 export한다.
 export default function SchoolsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SchoolsPageInner />
+    </Suspense>
+  );
+}
+
+function SchoolsPageInner() {
   const { firebaseUser } = useAuth();
+  const searchParams = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [neisOpen, setNeisOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [namePrefix, setNamePrefix] = useState("");
-  const [regionFilter, setRegionFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<SchoolStatus | undefined>(undefined);
-  const [gradeFilter, setGradeFilter] = useState<SchoolGrade | undefined>(undefined);
-  const [levelFilter, setLevelFilter] = useState<SchoolLevel | undefined>(undefined);
+  // 대시보드 통계카드 클릭 등으로 ?status=계약 형태 URL을 넘어오면 그 값으로 초기 필터를 맞춘다.
+  const [regionFilter, setRegionFilter] = useState<string | undefined>(searchParams.get("region") || undefined);
+  const [statusFilter, setStatusFilter] = useState<SchoolStatus | undefined>(
+    (searchParams.get("status") as SchoolStatus) || undefined
+  );
+  const [gradeFilter, setGradeFilter] = useState<SchoolGrade | undefined>(
+    (searchParams.get("grade") as SchoolGrade) || undefined
+  );
+  const [levelFilter, setLevelFilter] = useState<SchoolLevel | undefined>(
+    (searchParams.get("level") as SchoolLevel) || undefined
+  );
   const [importing, setImporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);

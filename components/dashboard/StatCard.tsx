@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
@@ -8,12 +9,14 @@ export function StatCard({
   value,
   suffix,
   accent = "primary",
+  href,
 }: {
   icon: LucideIcon;
   label: string;
   value: string | number;
   suffix?: string;
   accent?: "primary" | "green" | "amber" | "violet";
+  href?: string;
 }) {
   const accentMap = {
     primary: "bg-primary-50 text-primary-600",
@@ -21,8 +24,8 @@ export function StatCard({
     amber: "bg-amber-50 text-amber-600",
     violet: "bg-violet-50 text-violet-600",
   };
-  return (
-    <Card className="p-4">
+  const content = (
+    <Card className={cn("p-4", href && "transition-shadow hover:shadow-pop cursor-pointer")}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-ink-500">{label}</p>
@@ -37,4 +40,9 @@ export function StatCard({
       </div>
     </Card>
   );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+  return content;
 }

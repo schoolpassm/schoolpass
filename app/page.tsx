@@ -96,14 +96,14 @@ export default function DashboardPage() {
   return (
     <AppShell title="대시보드">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
-        <StatCard icon={School} label="학교DB 수" value={stats.loading ? "-" : stats.totalSchools} accent="primary" />
-        <StatCard icon={Building2} label="교육지원청 수" value={eduOffices.length} accent="violet" />
-        <StatCard icon={PhoneCall} label="전화 완료" value={stageCounts["전화완료"] ?? 0} accent="primary" />
-        <StatCard icon={CalendarClock} label="방문 예정" value={stageCounts["방문예정"] ?? 0} accent="amber" />
-        <StatCard icon={MonitorPlay} label="시연 예정" value={stageCounts["시연"] ?? 0} accent="violet" />
-        <StatCard icon={FileText} label="견적" value={stageCounts["견적"] ?? 0} accent="amber" />
-        <StatCard icon={FileSignature} label="계약" value={stageCounts["계약"] ?? 0} accent="green" />
-        <StatCard icon={CheckCircle2} label="설치 완료" value={stageCounts["설치완료"] ?? 0} accent="green" />
+        <StatCard icon={School} label="학교DB 수" value={stats.loading ? "-" : stats.totalSchools} accent="primary" href="/schools" />
+        <StatCard icon={Building2} label="교육지원청 수" value={eduOffices.length} accent="violet" href="/education-offices" />
+        <StatCard icon={PhoneCall} label="전화 완료" value={stageCounts["전화완료"] ?? 0} accent="primary" href="/schools?status=전화완료" />
+        <StatCard icon={CalendarClock} label="방문 예정" value={stageCounts["방문예정"] ?? 0} accent="amber" href="/schools?status=방문예정" />
+        <StatCard icon={MonitorPlay} label="시연 예정" value={stageCounts["시연"] ?? 0} accent="violet" href="/schools?status=시연" />
+        <StatCard icon={FileText} label="견적" value={stageCounts["견적"] ?? 0} accent="amber" href="/schools?status=견적" />
+        <StatCard icon={FileSignature} label="계약" value={stageCounts["계약"] ?? 0} accent="green" href="/schools?status=계약" />
+        <StatCard icon={CheckCircle2} label="설치 완료" value={stageCounts["설치완료"] ?? 0} accent="green" href="/schools?status=설치완료" />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
