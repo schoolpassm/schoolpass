@@ -67,8 +67,28 @@ export async function fetchStudentCounts(
   });
 
   const res = await fetch(`${SCHOOLINFO_BASE_URL}?${params.toString()}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`학교알리미 API 요청 실패: ${res.status}`);
+  const rawText = await res.text();
 
-  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(`학교알리미 API 요청 실패 (${res.status}): ${rawText.slice(0, 200)}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error(`학교알리미 응답이 JSON이 아님: ${rawText.slice(0, 200)}`);
+  }
+
+  // 일부 정부 OpenAPI는 에러도 200 OK로 내려주고 result 코드로만 구분한다 (예: {"resultCode":"...", "resultMsg":"..."})
+  if (json && typeof json === "object" && ("resultCode" in (json as any) || "RESULT" in (json as any))) {
+    const errObj = (json as any).resultCode ? json : (json as any).RESULT;
+    const code = errObj?.resultCode ?? errObj?.CODE;
+    const msg = errObj?.resultMsg ?? errObj?.MESSAGE;
+    if (code && String(code) !== "00" && String(code).toUpperCase() !== "INFO-000") {
+      throw new Error(`학교알리미 API 오류 응답 [${code}]: ${msg ?? rawText.slice(0, 200)}`);
+    }
+  }
+
   return findRecordArray(json) ?? [];
 }

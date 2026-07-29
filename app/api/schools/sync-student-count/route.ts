@@ -38,15 +38,37 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 
 async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStudentCountRow[]) {
   let matched = 0;
+  let matchedByName = 0;
   let unmatched = 0;
   const chunks: (typeof rows)[] = [];
   for (let i = 0; i < rows.length; i += 300) chunks.push(rows.slice(i, i + 300));
 
   for (const chunk of chunks) {
     const snaps = await Promise.all(chunk.map((row) => db.collection("schools_detail").doc(row.SCHUL_CODE).get()));
+
+    // 1차: SCHUL_CODE로 문서ID 직접 매칭 실패한 것들 모아서 2차: 학교명으로 재시도
+    // (학교알리미 코드와 NEIS 코드 체계가 달라 코드 매칭이 거의 안 통하는 경우가 있음 — 이름 매칭이 사실상 주 경로)
+    const needsNameLookup: { row: SchoolinfoStudentCountRow; idx: number }[] = [];
+    snaps.forEach((snap, idx) => {
+      if (!snap.exists) needsNameLookup.push({ row: chunk[idx], idx });
+    });
+
+    const nameLookupResults = await Promise.all(
+      needsNameLookup.map(async ({ row }) => {
+        const q = await db.collection("schools_summary").where("name", "==", row.SCHUL_NM).limit(1).get();
+        return q.empty ? null : q.docs[0].id;
+      })
+    );
+    const nameMatchMap = new Map<number, string>();
+    needsNameLookup.forEach(({ idx }, i) => {
+      const foundId = nameLookupResults[i];
+      if (foundId) nameMatchMap.set(idx, foundId);
+    });
+
     const batch = db.batch();
     chunk.forEach((row, idx) => {
-      if (!snaps[idx].exists) {
+      const docId = snaps[idx].exists ? row.SCHUL_CODE : nameMatchMap.get(idx);
+      if (!docId) {
         unmatched += 1;
         return;
       }
@@ -60,19 +82,20 @@ async function applyRows(db: FirebaseFirestore.Firestore, rows: SchoolinfoStuden
       if (studentCount != null && !isNaN(studentCount)) patch.studentCount = studentCount;
       if (classCount != null && !isNaN(classCount)) patch.classCount = classCount;
 
-      batch.set(db.collection("schools_detail").doc(row.SCHUL_CODE), patch, { merge: true });
+      batch.set(db.collection("schools_detail").doc(docId), patch, { merge: true });
       if (patch.studentCount != null) {
         batch.set(
-          db.collection("schools_summary").doc(row.SCHUL_CODE),
+          db.collection("schools_summary").doc(docId),
           { studentCount: patch.studentCount, updatedAt: FieldValue.serverTimestamp() },
           { merge: true }
         );
       }
       matched += 1;
+      if (!snaps[idx].exists) matchedByName += 1;
     });
     await batch.commit();
   }
-  return { matched, unmatched };
+  return { matched, matchedByName, unmatched };
 }
 
 /**
@@ -99,8 +122,13 @@ export async function POST(req: NextRequest) {
 
   const db = getAdminDb();
   let matched = 0;
+  let matchedByName = 0;
   let unmatched = 0;
   let usedWildcard = false;
+  let districtsAttempted = 0;
+  let districtsSucceeded = 0;
+  let totalRowsFetched = 0;
+  let sampleError: string | null = null;
   const failedLevels: string[] = [];
 
   for (const levelCode of levelCodes) {
@@ -109,8 +137,10 @@ export async function POST(req: NextRequest) {
       const wildcardRows = await fetchStudentCounts(year, levelCode, "00", "00000");
       if (wildcardRows.length > 0) {
         usedWildcard = true;
+        totalRowsFetched += wildcardRows.length;
         const r = await applyRows(db, wildcardRows);
         matched += r.matched;
+        matchedByName += r.matchedByName;
         unmatched += r.unmatched;
         continue;
       }
@@ -119,29 +149,38 @@ export async function POST(req: NextRequest) {
       if (!sidoCode) continue; // 시도를 안 골랐으면 여기서 중단 (프론트에서 재요청 유도)
 
       const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
+      districtsAttempted += districts.length;
       const districtResults = await mapWithConcurrency(districts, 8, async (d) => {
         try {
-          return await fetchStudentCounts(year, levelCode, d.sidoCode, d.sggCode);
-        } catch {
+          const rows = await fetchStudentCounts(year, levelCode, d.sidoCode, d.sggCode);
+          districtsSucceeded += 1;
+          return rows;
+        } catch (err) {
+          if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
           return [] as SchoolinfoStudentCountRow[];
         }
       });
       const allRows = districtResults.flat();
+      totalRowsFetched += allRows.length;
       const r = await applyRows(db, allRows);
       matched += r.matched;
+      matchedByName += r.matchedByName;
       unmatched += r.unmatched;
     } catch (err) {
       console.error(`schoolinfo student-count sync failed for level ${levelCode}`, err);
       failedLevels.push(levelCode);
+      if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
     }
   }
 
   return NextResponse.json({
     ok: true,
     matched,
+    matchedByName,
     unmatched,
     failedLevels,
     usedWildcard,
     requiresSido: !usedWildcard && !sidoCode,
+    debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, sampleError },
   });
 }

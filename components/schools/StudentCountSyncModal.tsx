@@ -19,9 +19,14 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
   const [levels, setLevels] = useState<Set<string>>(new Set(SCHOOLINFO_LEVEL_CODES.map((l) => l.code)));
   const [sidoCode, setSidoCode] = useState(SIDO_OPTIONS[0]?.[0] ?? "");
   const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<{ matched: number; unmatched: number; usedWildcard: boolean; requiresSido: boolean } | null>(
-    null
-  );
+  const [result, setResult] = useState<{
+    matched: number;
+    matchedByName: number;
+    unmatched: number;
+    usedWildcard: boolean;
+    requiresSido: boolean;
+    debug?: { districtsAttempted: number; districtsSucceeded: number; totalRowsFetched: number; sampleError: string | null };
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function toggleLevel(code: string) {
@@ -49,9 +54,11 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
       if (!res.ok) throw new Error(json?.error || "동기화 실패");
       setResult({
         matched: json.matched,
+        matchedByName: json.matchedByName,
         unmatched: json.unmatched,
         usedWildcard: json.usedWildcard,
         requiresSido: json.requiresSido,
+        debug: json.debug,
       });
     } catch (e: any) {
       setError(e.message || "동기화 중 오류가 발생했습니다.");
@@ -93,9 +100,18 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
 
         {result && (
           <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
-            동기화 완료 — 매칭 {result.matched}건 반영, 미매칭 {result.unmatched}건
+            동기화 완료 — 매칭 {result.matched}건 반영 (그 중 이름매칭 {result.matchedByName}건), 미매칭 {result.unmatched}건
             {result.usedWildcard && " (전국 일괄 조회 성공)"}
             {!result.usedWildcard && !result.requiresSido && " (선택하신 시/도 단위로 조회함)"}
+          </div>
+        )}
+        {result?.debug && (
+          <div className="rounded-lg bg-surface-muted p-3 text-[11px] text-ink-500">
+            진단정보: 시군구 {result.debug.districtsAttempted}곳 시도 중 {result.debug.districtsSucceeded}곳 성공,
+            받아온 원본 데이터 {result.debug.totalRowsFetched}건
+            {result.debug.sampleError && (
+              <p className="mt-1 text-status-danger">샘플 에러: {result.debug.sampleError}</p>
+            )}
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-xs text-status-danger">{error}</div>}
