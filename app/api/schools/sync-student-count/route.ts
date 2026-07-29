@@ -132,22 +132,28 @@ export async function POST(req: NextRequest) {
   const failedLevels: string[] = [];
 
   for (const levelCode of levelCodes) {
+    // 1) 전국 와일드카드 우선 시도 — 실패해도(신규 키는 대부분 거부됨) 아래 시군구 순회로 계속 진행한다.
+    let wildcardWorked = false;
     try {
-      // 1) 전국 와일드카드 우선 시도 (구식 인증키는 이걸로 끝남)
       const wildcardRows = await fetchStudentCounts(year, levelCode, "00", "00000");
       if (wildcardRows.length > 0) {
+        wildcardWorked = true;
         usedWildcard = true;
         totalRowsFetched += wildcardRows.length;
         const r = await applyRows(db, wildcardRows);
         matched += r.matched;
         matchedByName += r.matchedByName;
         unmatched += r.unmatched;
-        continue;
       }
+    } catch (err) {
+      if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
+    }
+    if (wildcardWorked) continue;
 
-      // 2) 와일드카드가 비어있으면 (신규 인증키) 선택한 시도의 시군구를 전부 순회
-      if (!sidoCode) continue; // 시도를 안 골랐으면 여기서 중단 (프론트에서 재요청 유도)
+    // 2) 와일드카드가 안 통하면 선택한 시도의 시군구를 전부 순회
+    if (!sidoCode) continue; // 시도를 안 골랐으면 여기서 중단 (프론트에서 재요청 유도)
 
+    try {
       const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
       districtsAttempted += districts.length;
       const districtResults = await mapWithConcurrency(districts, 8, async (d) => {
