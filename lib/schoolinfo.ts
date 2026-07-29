@@ -49,8 +49,8 @@ function findRecordArray(node: unknown, depth = 0): any[] | null {
 export async function fetchStudentCounts(
   year: number,
   schulKndCode: string,
-  sidoCode: string,
-  sggCode: string
+  sggCode: string,
+  sidoCode?: string
 ): Promise<SchoolinfoStudentCountRow[]> {
   const apiKey = process.env.SCHOOLINFO_API_KEY;
   if (!apiKey) {
@@ -62,9 +62,11 @@ export async function fetchStudentCounts(
     apiType: "09",
     pbanYr: String(year),
     schulKndCode,
-    sidoCode,
     sggCode,
   });
+  // sidoCode는 요청인자 표에서 "선택"이며, sggCode 하나로 이미 지역이 특정된다.
+  // 실제로 sidoCode를 같이 보내면 "유효하지 않은 시도 코드"로 거부되는 사례가 있어 기본적으로 생략한다.
+  if (sidoCode) params.set("sidoCode", sidoCode);
 
   const res = await fetch(`${SCHOOLINFO_BASE_URL}?${params.toString()}`, { cache: "no-store" });
   const rawText = await res.text();

@@ -134,14 +134,15 @@ export async function POST(req: NextRequest) {
   let districtsAttempted = 0;
   let districtsSucceeded = 0;
   let totalRowsFetched = 0;
-  let sampleError: string | null = null;
+  let wildcardSampleError: string | null = null;
+  let districtSampleError: string | null = null;
   const failedLevels: string[] = [];
 
   for (const levelCode of levelCodes) {
     // 1) 전국 와일드카드 우선 시도 — 실패해도(신규 키는 대부분 거부됨) 아래 시군구 순회로 계속 진행한다.
     let wildcardWorked = false;
     try {
-      const wildcardRows = await fetchStudentCounts(year, levelCode, "00", "00000");
+      const wildcardRows = await fetchStudentCounts(year, levelCode, "00000");
       if (wildcardRows.length > 0) {
         wildcardWorked = true;
         usedWildcard = true;
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
         unmatched += r.unmatched;
       }
     } catch (err) {
-      if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
+      if (!wildcardSampleError) wildcardSampleError = err instanceof Error ? err.message : String(err);
     }
     if (wildcardWorked) continue;
 
@@ -165,11 +166,11 @@ export async function POST(req: NextRequest) {
       districtsAttempted += districts.length;
       const districtResults = await mapWithConcurrency(districts, 8, async (d) => {
         try {
-          const rows = await fetchStudentCounts(year, levelCode, d.sidoCode, d.sggCode);
+          const rows = await fetchStudentCounts(year, levelCode, d.sggCode);
           districtsSucceeded += 1;
           return rows;
         } catch (err) {
-          if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
+          if (!districtSampleError) districtSampleError = err instanceof Error ? err.message : String(err);
           return [] as SchoolinfoStudentCountRow[];
         }
       });
@@ -182,7 +183,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error(`schoolinfo student-count sync failed for level ${levelCode}`, err);
       failedLevels.push(levelCode);
-      if (!sampleError) sampleError = err instanceof Error ? err.message : String(err);
+      if (!districtSampleError) districtSampleError = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -194,6 +195,6 @@ export async function POST(req: NextRequest) {
     failedLevels,
     usedWildcard,
     requiresSido: !usedWildcard && !sidoCode,
-    debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, sampleError },
+    debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, wildcardSampleError, districtSampleError },
   });
 }

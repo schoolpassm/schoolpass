@@ -25,7 +25,13 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     unmatched: number;
     usedWildcard: boolean;
     requiresSido: boolean;
-    debug?: { districtsAttempted: number; districtsSucceeded: number; totalRowsFetched: number; sampleError: string | null };
+    debug?: {
+      districtsAttempted: number;
+      districtsSucceeded: number;
+      totalRowsFetched: number;
+      wildcardSampleError: string | null;
+      districtSampleError: string | null;
+    };
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,8 +115,11 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
           <div className="rounded-lg bg-surface-muted p-3 text-[11px] text-ink-500">
             진단정보: 시군구 {result.debug.districtsAttempted}곳 시도 중 {result.debug.districtsSucceeded}곳 성공,
             받아온 원본 데이터 {result.debug.totalRowsFetched}건
-            {result.debug.sampleError && (
-              <p className="mt-1 text-status-danger">샘플 에러: {result.debug.sampleError}</p>
+            {result.debug.wildcardSampleError && (
+              <p className="mt-1 text-status-danger">전국일괄 에러: {result.debug.wildcardSampleError}</p>
+            )}
+            {result.debug.districtSampleError && (
+              <p className="mt-1 text-status-danger">시군구별 에러: {result.debug.districtSampleError}</p>
             )}
           </div>
         )}
