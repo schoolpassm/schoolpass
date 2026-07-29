@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import {
   fetchSchoolinfoRows,
-  extractFieldsForCategory,
   SCHOOLINFO_LEVEL_CODES,
   SCHOOLINFO_CATEGORIES,
   SchoolinfoCategory,
   SchoolinfoRow,
 } from "@/lib/schoolinfo";
+import { applySchoolinfoRows } from "@/lib/schoolinfo-apply";
 import { SIGUNGU_CODES } from "@/lib/schoolinfo-regions";
-import { FieldValue } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -42,70 +41,12 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-async function applyRows(
-  db: FirebaseFirestore.Firestore,
-  category: SchoolinfoCategory,
-  rows: SchoolinfoRow[],
-  regionHint?: string
-) {
-  let matched = 0;
-  let matchedByName = 0;
-  let unmatched = 0;
-  const chunks: (typeof rows)[] = [];
-  for (let i = 0; i < rows.length; i += 300) chunks.push(rows.slice(i, i + 300));
-
-  for (const chunk of chunks) {
-    const snaps = await Promise.all(chunk.map((row) => db.collection("schools_detail").doc(row.SCHUL_CODE).get()));
-
-    const needsNameLookup: { row: SchoolinfoRow; idx: number }[] = [];
-    snaps.forEach((snap, idx) => {
-      if (!snap.exists) needsNameLookup.push({ row: chunk[idx], idx });
-    });
-
-    const nameLookupResults = await Promise.all(
-      needsNameLookup.map(async ({ row }) => {
-        let q: FirebaseFirestore.Query = db.collection("schools_summary").where("name", "==", row.SCHUL_NM);
-        if (regionHint) q = q.where("region", "==", regionHint);
-        const snap = await q.limit(2).get();
-        if (snap.size !== 1) return null;
-        return snap.docs[0].id;
-      })
-    );
-    const nameMatchMap = new Map<number, string>();
-    needsNameLookup.forEach(({ idx }, i) => {
-      const foundId = nameLookupResults[i];
-      if (foundId) nameMatchMap.set(idx, foundId);
-    });
-
-    const batch = db.batch();
-    chunk.forEach((row, idx) => {
-      const docId = snaps[idx].exists ? row.SCHUL_CODE : nameMatchMap.get(idx);
-      if (!docId) {
-        unmatched += 1;
-        return;
-      }
-      const fields = extractFieldsForCategory(category, row);
-      if (Object.keys(fields).length === 0) {
-        unmatched += 1;
-        return;
-      }
-      const patch = { ...fields, updatedAt: FieldValue.serverTimestamp() };
-      batch.set(db.collection("schools_detail").doc(docId), patch, { merge: true });
-      if ("studentCount" in fields) {
-        batch.set(
-          db.collection("schools_summary").doc(docId),
-          { studentCount: fields.studentCount, updatedAt: FieldValue.serverTimestamp() },
-          { merge: true }
-        );
-      }
-      matched += 1;
-      if (!snaps[idx].exists) matchedByName += 1;
-    });
-    await batch.commit();
-  }
-  return { matched, matchedByName, unmatched };
-}
-
+/**
+ * ⚠️ Vercel Hobby 플랜은 서버리스 함수 실행시간이 짧게 제한되어(보통 10초),
+ * 여러 시군구×학교급을 한 번에 순회하는 이 라우트는 타임아웃날 수 있다.
+ * 화면(모달)에서는 대신 /api/schools/sync-public-data-chunk 를 시군구 1곳씩 잘게 나눠 호출한다.
+ * 이 라우트는 Vercel Pro 이상이거나 Firebase CLI 등에서 한 번에 처리하고 싶을 때를 위해 남겨둔다.
+ */
 export async function POST(req: NextRequest) {
   try {
     await assertAuthorized(req);
@@ -159,7 +100,7 @@ export async function POST(req: NextRequest) {
       });
       const allRows = districtResults.flat();
       totalRowsFetched += allRows.length;
-      const r = await applyRows(db, category, allRows, regionHint);
+      const r = await applySchoolinfoRows(db, category, allRows, regionHint);
       matched += r.matched;
       matchedByName += r.matchedByName;
       unmatched += r.unmatched;
