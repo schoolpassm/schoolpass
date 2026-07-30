@@ -8,7 +8,7 @@
  * 새 카테고리를 추가하려면 이 파일에 항목 하나만 추가하면 된다 (라우트/UI 쪽 로직은 그대로 재사용).
  */
 
-const SCHOOLINFO_BASE_URL = "http://www.schoolinfo.go.kr/openApi.do";
+const SCHOOLINFO_BASE_URL = "https://www.schoolinfo.go.kr/openApi.do";
 
 /** schulKndCode 값: 02:초등 03:중등 04:고등 05:특수 06:그외 07:각종 */
 export const SCHOOLINFO_LEVEL_CODES: { code: string; label: string }[] = [
@@ -31,12 +31,16 @@ export type SchoolinfoCategory =
 export interface SchoolinfoCategoryMeta {
   apiType: string;
   label: string;
+  /** apiType별로 필요한 추가 필수 파라미터 (예: 학교회계는 depthNo/depthNo2 필요) */
+  extraParams?: Record<string, string>;
 }
 
 export const SCHOOLINFO_CATEGORIES: Record<SchoolinfoCategory, SchoolinfoCategoryMeta> = {
   student_count: { apiType: "09", label: "학생수·학급수" },
   teacher_count: { apiType: "22", label: "교직원수" },
-  finance: { apiType: "27", label: "학교회계(세입 규모)" },
+  // depthNo(10:예산 20:결산) + depthNo2(1:세입예산 2:세출예산 3:세입결산 4:세출결산) 둘 다 필수.
+  // "세입 규모" 판단이 목적이므로 결산(확정치) 기준 세입(depthNo2=3)을 사용한다.
+  finance: { apiType: "27", label: "학교회계(세입 규모)", extraParams: { depthNo: "20", depthNo2: "3" } },
   development_fund: { apiType: "30", label: "학교발전기금" },
   support_facility: { apiType: "18", label: "학생지원시설" },
   facility_safety: { apiType: "44", label: "시설안전 점검" },
@@ -150,6 +154,7 @@ export async function fetchSchoolinfoRows(
     schulKndCode,
     sggCode,
     sidoCode,
+    ...(SCHOOLINFO_CATEGORIES[category].extraParams ?? {}),
   });
 
   const res = await fetch(`${SCHOOLINFO_BASE_URL}?${params.toString()}`, { cache: "no-store" });
