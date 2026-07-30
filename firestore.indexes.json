@@ -202,6 +202,14 @@
       ]
     },
     {
+      "collectionGroup": "schools_summary",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eduOfficeName", "order": "ASCENDING" },
+        { "fieldPath": "aiScore", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "contracts",
       "queryScope": "COLLECTION",
       "fields": [
