@@ -6,7 +6,19 @@ import { useSchoolsInBounds } from "@/lib/hooks/useSchoolsInBounds";
 import { haversineDistanceKm } from "@/lib/geo";
 import { SchoolSummaryDoc } from "@/types";
 
-const GRADE_COLOR: Record<string, string> = { A: "#3B63E0", B: "#5C87F5", C: "#F0A93B", D: "#98A2B3" };
+/** 영업 상태를 3그룹으로 나눠 마커 색상을 다르게 표시한다: 구축완료(초록) / 계약(파랑) / 미접촉(회색) / 진행중(주황) */
+function colorForStatus(status?: string): string {
+  if (status === "설치완료") return "#16A34A"; // 구축학교 - 초록
+  if (status === "계약") return "#3B63E0"; // 계약학교 - 파랑
+  if (status === "신규") return "#98A2B3"; // 미접촉학교 - 회색
+  return "#F0A93B"; // 그 외(전화완료~협의중 등 진행중) - 주황
+}
+
+function buildMarkerImage(kakao: any, color: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="${color}" stroke="white" stroke-width="3"/></svg>`;
+  const url = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new kakao.maps.MarkerImage(url, new kakao.maps.Size(28, 28), { offset: new kakao.maps.Point(14, 14) });
+}
 
 export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsChange?: (schools: SchoolSummaryDoc[]) => void }) {
   const { ready, error, hasKey } = useKakaoMapsLoader();
@@ -62,6 +74,7 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
       .map((s) => {
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.lat!, s.lng!),
+          image: buildMarkerImage(kakao, colorForStatus(s.status)),
         });
         kakao.maps.event.addListener(marker, "click", () => {
           window.open(`/schools/${s.id}`, "_blank");
@@ -142,6 +155,12 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
         </span>
       </div>
       <div ref={mapRef} className="h-[70vh] w-full rounded-xl border border-surface-border" />
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-ink-500">
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#16A34A" }} /> 구축완료</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#3B63E0" }} /> 계약</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#F0A93B" }} /> 진행중</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#98A2B3" }} /> 미접촉(신규)</span>
+      </div>
     </div>
   );
 }

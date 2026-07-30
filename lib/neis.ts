@@ -48,6 +48,7 @@ export interface NeisSchoolRow {
   ORG_TELNO?: string; // 전화번호
   HMPG_ADRES?: string; // 홈페이지
   FOND_SC_NM?: string; // 설립구분 (공립/사립 등)
+  FOND_YMD?: string; // 설립일자 (YYYYMMDD) — 신설학교 자동감지용
 }
 
 /**

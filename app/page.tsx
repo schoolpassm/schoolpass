@@ -22,6 +22,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { RegionContractChart, MonthlyContractChart } from "@/components/dashboard/Charts";
 import { PipelineOverview } from "@/components/dashboard/PipelineOverview";
 import { TopSchoolsList } from "@/components/dashboard/TopSchoolsList";
+import { TodayMeetings } from "@/components/dashboard/TodayMeetings";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
@@ -171,18 +172,25 @@ export default function DashboardPage() {
           title="오늘 방문 추천 TOP10"
           schools={stats.topVisitTargets}
           emptyHint="AI 계약가능성 점수를 매긴 학교가 아직 없습니다."
+          showActions
         />
         <TopSchoolsList
           title="계약 가능성 TOP20"
           schools={stats.topContractProbability}
           emptyHint="AI 계약가능성 점수를 매긴 학교가 아직 없습니다."
+          showActions
         />
         <TopSchoolsList
           title="이번주 전화 대상"
           schools={stats.weeklyCallTargets}
           emptyHint="신규 상태 학교가 없습니다."
           showScore={false}
+          showActions
         />
+      </div>
+
+      <div className="mt-4">
+        <TodayMeetings />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

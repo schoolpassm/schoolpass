@@ -91,6 +91,10 @@ export async function POST(req: NextRequest) {
           const detailRef = db.collection("schools_detail").doc(row.SD_SCHUL_CODE);
           const summaryRef = db.collection("schools_summary").doc(row.SD_SCHUL_CODE);
 
+          const foundYear = row.FOND_YMD && row.FOND_YMD.length >= 4 ? parseInt(row.FOND_YMD.slice(0, 4), 10) : null;
+          const currentYear = new Date().getFullYear();
+          const isNewlyOpened = foundYear != null && !isNaN(foundYear) && currentYear - foundYear <= 3;
+
           const masterFields = {
             name: row.SCHUL_NM,
             region: row.LCTN_SC_NM || row.ATPT_OFCDC_SC_NM,
@@ -99,6 +103,8 @@ export async function POST(req: NextRequest) {
             phone: row.ORG_TELNO ?? "",
             neisSchoolCode: row.SD_SCHUL_CODE,
             isClosed: false,
+            isNewlyOpened,
+            ...(row.FOND_SC_NM && { foundationType: row.FOND_SC_NM }),
             lastSyncedAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
           };
@@ -108,6 +114,7 @@ export async function POST(req: NextRequest) {
             level: masterFields.level,
             address: masterFields.address,
             phone: masterFields.phone,
+            isNewlyOpened,
             updatedAt: FieldValue.serverTimestamp(),
           };
 

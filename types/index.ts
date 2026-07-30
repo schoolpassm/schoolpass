@@ -74,8 +74,9 @@ export interface SchoolDoc extends BaseDoc {
   tags: string[];
   note?: string;
   partnerId?: string; // 연결된 지역 파트너
-  isNewlyOpened?: boolean; // 신설 학교 여부 (여름방학 타겟용)
+  isNewlyOpened?: boolean; // 신설 학교 여부 (NEIS 설립일자 기준 자동 감지, 최근 3년 이내 개교)
   isClosed?: boolean; // 폐교 여부 (NEIS 동기화로 감지)
+  foundationType?: string; // 공립/사립 등 설립구분 (NEIS FOND_SC_NM)
   archived?: boolean;
   // --- 학교알리미(NEIS) 자동 동기화 관련 ---
   neisSchoolCode?: string; // NEIS SD_SCHUL_CODE, 동기화 매칭 기준 키
