@@ -79,10 +79,16 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
           batch.map(async (t) => {
             try {
               return await callChunk(t.levelCode, t.sggCode, regionHint, token);
-            } catch (e: any) {
-              setLastError(e.message || String(e));
-              totals.failedChunks += 1;
-              return null;
+            } catch (e1: any) {
+              // 외부 서버 일시 지연/타임아웃 대비 1회 자동 재시도
+              try {
+                await new Promise((r) => setTimeout(r, 1000));
+                return await callChunk(t.levelCode, t.sggCode, regionHint, token);
+              } catch (e2: any) {
+                setLastError(e2.message || String(e2));
+                totals.failedChunks += 1;
+                return null;
+              }
             }
           })
         );
