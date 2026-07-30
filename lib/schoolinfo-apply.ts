@@ -54,12 +54,11 @@ export async function applySchoolinfoRows(
       }
       const patch = { ...fields, updatedAt: FieldValue.serverTimestamp() };
       batch.set(db.collection("schools_detail").doc(docId), patch, { merge: true });
-      if ("studentCount" in fields) {
-        batch.set(
-          db.collection("schools_summary").doc(docId),
-          { studentCount: fields.studentCount, updatedAt: FieldValue.serverTimestamp() },
-          { merge: true }
-        );
+      const summaryPatch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+      if ("studentCount" in fields) summaryPatch.studentCount = fields.studentCount;
+      if ("eduOfficeName" in fields) summaryPatch.eduOfficeName = fields.eduOfficeName;
+      if (Object.keys(summaryPatch).length > 1) {
+        batch.set(db.collection("schools_summary").doc(docId), summaryPatch, { merge: true });
       }
       matched += 1;
       if (!snaps[idx].exists) matchedByName += 1;

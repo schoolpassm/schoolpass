@@ -93,6 +93,49 @@ export default function DashboardPage() {
     };
   }, [regionData]);
 
+  // 교육지원청 계약률: 계약된 학교의 eduOfficeName을 조회해 그룹핑 (계약 건수만큼만 조회, bounded)
+  const [eduOfficeRateData, setEduOfficeRateData] = useState<{ eduOffice: string; rate: number; count: number }[]>([]);
+  useEffect(() => {
+    if (contracts.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { doc, getDoc } = await import("firebase/firestore");
+      const uniqueSchoolIds = Array.from(new Set(contracts.map((c) => c.schoolId).filter(Boolean)));
+      const schoolDocs = await Promise.all(uniqueSchoolIds.map((id) => getDoc(doc(db, "schools_summary", id))));
+      const eduOfficeByContractSchool = new Map<string, string>();
+      schoolDocs.forEach((snap, i) => {
+        const eduOfficeName = snap.exists() ? (snap.data() as any).eduOfficeName : undefined;
+        if (eduOfficeName) eduOfficeByContractSchool.set(uniqueSchoolIds[i], eduOfficeName);
+      });
+
+      const contractCountByOffice: Record<string, number> = {};
+      for (const c of contracts) {
+        const officeName = eduOfficeByContractSchool.get(c.schoolId);
+        if (!officeName) continue;
+        contractCountByOffice[officeName] = (contractCountByOffice[officeName] ?? 0) + 1;
+      }
+
+      const officeNames = Object.keys(contractCountByOffice);
+      if (officeNames.length === 0) {
+        if (!cancelled) setEduOfficeRateData([]);
+        return;
+      }
+
+      const results = await Promise.all(
+        officeNames.map(async (name) => {
+          const snap = await getCountFromServer(query(collection(db, "schools_summary"), where("eduOfficeName", "==", name)));
+          const total = snap.data().count;
+          const count = contractCountByOffice[name];
+          return { eduOffice: name, count, rate: total > 0 ? Math.round((count / total) * 1000) / 10 : 0 };
+        })
+      );
+      if (!cancelled) setEduOfficeRateData(results.sort((a, b) => b.rate - a.rate));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contracts]);
+
   const stageCounts = stats.stageCounts;
 
   return (
@@ -162,6 +205,30 @@ export default function DashboardPage() {
                 <Bar dataKey="rate" fill="#2FBF71" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </CardBody>
+        </Card>
+      </div>
+      <div className="mt-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>교육지원청 계약률 (계약 건수 / 해당 교육지원청 학교 수)</CardTitle>
+          </CardHeader>
+          <CardBody className="h-72">
+            {eduOfficeRateData.length === 0 ? (
+              <p className="flex h-full items-center justify-center text-xs text-ink-300">
+                교육지원청명이 채워진 계약학교가 아직 없습니다 (학교관리 → 공공데이터 동기화로 채울 수 있어요).
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={eduOfficeRateData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E9F2" vertical={false} />
+                  <XAxis dataKey="eduOffice" tick={{ fontSize: 10, fill: "#667085" }} axisLine={false} tickLine={false} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 11, fill: "#667085" }} axisLine={false} tickLine={false} unit="%" />
+                  <Tooltip formatter={(v: number) => `${v}%`} cursor={{ fill: "#F5F7FB" }} />
+                  <Bar dataKey="rate" fill="#7A5CF0" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardBody>
         </Card>
       </div>

@@ -65,11 +65,14 @@ export async function POST(req: NextRequest) {
 
   let created = 0;
   let updated = 0;
+  let closedDetected = 0;
   const failedRegions: string[] = [];
 
   for (const regionCode of regionCodes) {
     try {
       const rows = await fetchNeisSchools(regionCode, schoolName);
+      const seenCodes = new Set<string>();
+      let regionName: string | undefined;
       const chunks: (typeof rows)[] = [];
       for (let i = 0; i < rows.length; i += 300) chunks.push(rows.slice(i, i + 300));
 
@@ -82,6 +85,8 @@ export async function POST(req: NextRequest) {
 
         const batch = db.batch();
         chunk.forEach((row, idx) => {
+          seenCodes.add(row.SD_SCHUL_CODE);
+          regionName = row.LCTN_SC_NM || row.ATPT_OFCDC_SC_NM;
           const exists = existSnaps[idx].exists;
           const detailRef = db.collection("schools_detail").doc(row.SD_SCHUL_CODE);
           const summaryRef = db.collection("schools_summary").doc(row.SD_SCHUL_CODE);
@@ -108,7 +113,7 @@ export async function POST(req: NextRequest) {
 
           if (exists) {
             // 이미 등록된 학교: 영업 관련 필드(status/grade/ownerName/tags/note/partnerId)는 건드리지 않고
-            // NEIS 원본 마스터 정보만 갱신한다.
+            // NEIS 원본 마스터 정보만 갱신한다. (재등장했으므로 폐교 플래그도 다시 해제)
             batch.set(detailRef, masterFields, { merge: true });
             batch.set(summaryRef, summaryFields, { merge: true });
             updated += 1;
@@ -133,6 +138,47 @@ export async function POST(req: NextRequest) {
         });
         await batch.commit();
       }
+
+      // 폐교 감지: 이 지역에서 NEIS 동기화로 등록됐던 기존 학교 중, 이번 응답에 없는 학교는 폐교로 간주한다.
+      // region 필드로 bounded 쿼리(전체 스캔 아님), 500건씩 페이지네이션.
+      if (regionName) {
+        let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+        while (true) {
+          let q = db
+            .collection("schools_detail")
+            .where("region", "==", regionName)
+            .where("syncedFromNeis", "==", true)
+            .where("isClosed", "==", false)
+            .limit(500) as FirebaseFirestore.Query;
+          if (cursor) q = q.startAfter(cursor);
+          const snap = await q.get();
+          if (snap.empty) break;
+
+          const closeBatch = db.batch();
+          let anyClosed = false;
+          snap.docs.forEach((doc) => {
+            const code = doc.get("neisSchoolCode");
+            if (code && !seenCodes.has(code)) {
+              closeBatch.set(
+                db.collection("schools_detail").doc(doc.id),
+                { isClosed: true, updatedAt: FieldValue.serverTimestamp() },
+                { merge: true }
+              );
+              closeBatch.set(
+                db.collection("schools_summary").doc(doc.id),
+                { updatedAt: FieldValue.serverTimestamp() },
+                { merge: true }
+              );
+              anyClosed = true;
+              closedDetected += 1;
+            }
+          });
+          if (anyClosed) await closeBatch.commit();
+
+          if (snap.docs.length < 500) break;
+          cursor = snap.docs[snap.docs.length - 1];
+        }
+      }
     } catch (err) {
       console.error(`NEIS sync failed for region ${regionCode}`, err);
       failedRegions.push(regionCode);
@@ -143,6 +189,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     created,
     updated,
+    closedDetected,
     regionsSynced: regionCodes.length - failedRegions.length,
     failedRegions,
   });

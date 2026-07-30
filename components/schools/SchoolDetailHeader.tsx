@@ -29,6 +29,11 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-ink-900">{school.name}</h2>
               <StatusBadge status={school.status} />
+              {school.isClosed && (
+                <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-status-danger">
+                  폐교
+                </span>
+              )}
             </div>
             <p className="mt-1 text-sm text-ink-500">
               {school.region} · {school.level} · 학생 {school.studentCount ?? 0}명 · 담당 {school.ownerName ?? "-"}

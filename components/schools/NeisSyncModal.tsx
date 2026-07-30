@@ -12,7 +12,7 @@ export function NeisSyncModal({ open, onClose }: { open: boolean; onClose: () =>
   const { firebaseUser } = useAuth();
   const [regionCode, setRegionCode] = useState(NEIS_REGION_CODES[0].code);
   const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<{ created: number; updated: number } | null>(null);
+  const [result, setResult] = useState<{ created: number; updated: number; closedDetected?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSync() {
@@ -29,7 +29,7 @@ export function NeisSyncModal({ open, onClose }: { open: boolean; onClose: () =>
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "동기화 실패");
-      setResult({ created: json.created, updated: json.updated });
+      setResult({ created: json.created, updated: json.updated, closedDetected: json.closedDetected });
     } catch (e: any) {
       setError(e.message || "동기화 중 오류가 발생했습니다.");
     } finally {
@@ -57,6 +57,7 @@ export function NeisSyncModal({ open, onClose }: { open: boolean; onClose: () =>
         {result && (
           <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
             동기화 완료 — 신규 {result.created}건, 갱신 {result.updated}건
+            {typeof result.closedDetected === "number" && result.closedDetected > 0 && `, 폐교 감지 ${result.closedDetected}건`}
           </div>
         )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-xs text-status-danger">{error}</div>}

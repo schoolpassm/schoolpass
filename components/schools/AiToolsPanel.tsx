@@ -26,6 +26,8 @@ import { openProposalPrintView } from "@/lib/print";
 import { AiAction } from "@/lib/ai-prompts";
 import { cn } from "@/lib/utils";
 
+import { formatKRW } from "@/lib/commission";
+
 const ACTIONS: { key: AiAction; label: string; icon: any; hint: string }[] = [
   { key: "score", label: "계약 가능성 점수", icon: Star, hint: "0~100점 + 실제 근거" },
   { key: "call_script", label: "전화 스크립트", icon: Phone, hint: "행정실 첫 통화용" },
@@ -52,6 +54,8 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
     { name: string; distanceKm?: number; studentCount?: number; sameEduOffice: boolean; sameLevel: boolean }[]
   >([]);
   const [saved, setSaved] = useState(false);
+  const [expectedAmount, setExpectedAmount] = useState<number | null>(null);
+  const [visitWindow, setVisitWindow] = useState<string | null>(null);
 
   async function handleRun(action: AiAction) {
     if (!firebaseUser) return;
@@ -63,12 +67,16 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
     setFactors([]);
     setNeighbors([]);
     setSaved(false);
+    setExpectedAmount(null);
+    setVisitWindow(null);
     try {
       const result = await generateAi(firebaseUser, schoolId, action);
       setResultText(result.text);
       setScore(result.score);
       setFactors(result.factors ?? []);
       setNeighbors(result.installedNeighbors ?? []);
+      setExpectedAmount(result.expectedContractAmount ?? null);
+      setVisitWindow(result.recommendedVisitWindow ?? null);
     } catch (e: any) {
       setError(e.message || "생성 중 오류가 발생했습니다.");
     } finally {
@@ -163,6 +171,22 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
                         {f.positive ? "+" : "−"} {f.label}
                       </span>
                     ))}
+                  </div>
+                )}
+                {(expectedAmount != null || visitWindow) && (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {expectedAmount != null && (
+                      <div className="rounded-lg bg-white p-2 text-center shadow-card">
+                        <p className="text-[11px] text-ink-500">예상 계약금액</p>
+                        <p className="text-sm font-bold text-ink-900">{formatKRW(expectedAmount)}</p>
+                      </div>
+                    )}
+                    {visitWindow && (
+                      <div className="rounded-lg bg-white p-2 text-center shadow-card">
+                        <p className="text-[11px] text-ink-500">추천</p>
+                        <p className="text-sm font-bold text-primary-600">{visitWindow}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

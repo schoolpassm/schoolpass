@@ -89,6 +89,7 @@ export interface SchoolDoc extends BaseDoc {
   lastContactedAt?: Timestamp | null; // 최근 접촉일 (활동기록 생성 시 자동 갱신, "이번주 전화 대상" 계산용)
   // --- 학교알리미 추가 공시데이터 (교직원수/학교회계/발전기금/시설/시설안전/학교용지/보건) ---
   teacherCount?: number; // 교직원수(총계)
+  eduOfficeName?: string; // 교육지원청명 (schoolinfo JU_ORG_NM, 시도교육청보다 세분화된 실제 관할 교육지원청)
   financeRevenueTotal?: number; // 학교회계 세입 규모
   developmentFundTotal?: number; // 학교발전기금 금액합계
   supportFacilities?: { gym: number; auditorium: number; pool: number; careerRoom: number }; // 학생지원시설
@@ -121,6 +122,7 @@ export interface SchoolSummaryDoc {
   ownerName?: string;
   partnerId?: string;
   eduOfficeId?: string;
+  eduOfficeName?: string;
   tags: string[];
   isNewlyOpened?: boolean;
   aiScore?: number | null;

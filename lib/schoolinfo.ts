@@ -57,47 +57,51 @@ export function extractFieldsForCategory(category: SchoolinfoCategory, row: Scho
     return isNaN(n) ? undefined : n;
   };
 
+  // JU_ORG_NM(교육지원청명)은 모든 카테고리 응답에 공통으로 포함되어 있어, 어떤 동기화를 돌리든 항상 반영한다.
+  const common: Record<string, unknown> = row.JU_ORG_NM ? { eduOfficeName: String(row.JU_ORG_NM) } : {};
+
   switch (category) {
     case "student_count": {
       const studentCount = num(row.COL_S_SUM);
       const classCount = num(row.COL_C_SUM);
-      return { ...(studentCount != null && { studentCount }), ...(classCount != null && { classCount }) };
+      return { ...common, ...(studentCount != null && { studentCount }), ...(classCount != null && { classCount }) };
     }
     case "teacher_count": {
       const teacherCount = num(row.COL_S); // 총계(계)
-      return teacherCount != null ? { teacherCount } : {};
+      return { ...common, ...(teacherCount != null && { teacherCount }) };
     }
     case "finance": {
       const amounts = ["AMT1", "AMT2", "AMT3", "AMT4", "AMT5", "AMT6"].map((k) => num(row[k]) ?? 0);
       const total = amounts.reduce((a, b) => a + b, 0);
-      return total > 0 ? { financeRevenueTotal: total } : {};
+      return { ...common, ...(total > 0 && { financeRevenueTotal: total }) };
     }
     case "development_fund": {
       const total = num(row.AMT_SMTOT);
-      return total != null ? { developmentFundTotal: total } : {};
+      return { ...common, ...(total != null && { developmentFundTotal: total }) };
     }
     case "support_facility": {
       const gym = num(row.COL_1) ?? 0;
       const auditorium = num(row.COL_2) ?? 0;
       const pool = num(row.SWMPL_FGR) ?? 0;
       const careerRoom = num(row.COSE_CNSRM_FGR) ?? 0;
-      return { supportFacilities: { gym, auditorium, pool, careerRoom } };
+      return { ...common, supportFacilities: { gym, auditorium, pool, careerRoom } };
     }
     case "facility_safety": {
       const checkedDate = row.CK_YMD ? String(row.CK_YMD) : undefined;
       const resultCode = row.CK_RSLT_CODE ? String(row.CK_RSLT_CODE) : undefined;
       return {
+        ...common,
         ...(checkedDate && { facilitySafetyCheckedDate: checkedDate }),
         ...(resultCode && { facilitySafetyOk: resultCode !== "" }),
       };
     }
     case "school_land": {
       const area = num(row.COL_5);
-      return area != null ? { schoolLandArea: area } : {};
+      return { ...common, ...(area != null && { schoolLandArea: area }) };
     }
     case "health": {
       const usageCount = num(row.ALL_IFRMA_UTILZ_STDNT_FGR);
-      return usageCount != null ? { healthRoomUsageCount: usageCount } : {};
+      return { ...common, ...(usageCount != null && { healthRoomUsageCount: usageCount }) };
     }
   }
 }

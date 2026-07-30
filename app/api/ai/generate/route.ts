@@ -248,9 +248,32 @@ export async function POST(req: NextRequest) {
     const text = await callClaude(prompt, { system, maxTokens, model });
 
     let scoreValue: number | null = null;
+    let expectedContractAmount: number | null = null;
+    let recommendedVisitWindow: string | null = null;
     if (action === "score") {
       const match = text.match(/점수[:\s]*([0-9]{1,3})/);
       if (match) scoreValue = Math.min(100, parseInt(match[1], 10));
+
+      if (scoreValue != null) {
+        // 예상 계약금액: 최근 계약 200건의 평균 금액 × 점수 비율 (bounded 쿼리, 전체 스캔 아님)
+        const recentContractsSnap = await db.collection("contracts").orderBy("contractDate", "desc").limit(200).get();
+        const amounts = recentContractsSnap.docs.map((d) => d.get("contractAmount")).filter((a) => typeof a === "number");
+        if (amounts.length > 0) {
+          const avg = amounts.reduce((a: number, b: number) => a + b, 0) / amounts.length;
+          expectedContractAmount = Math.round((avg * scoreValue) / 100);
+        }
+
+        // 추천 방문시기: 점수 + 최근 접촉 경과일 기준 간단한 규칙
+        if (scoreValue >= 80 && (daysSinceLastContact == null || daysSinceLastContact >= 14)) {
+          recommendedVisitWindow = "이번 주 최우선 방문 대상";
+        } else if (scoreValue >= 60) {
+          recommendedVisitWindow = "이번 달 안에 방문 추천";
+        } else if (daysSinceLastContact != null && daysSinceLastContact >= 30) {
+          recommendedVisitWindow = "장기 미접촉 — 전화로 먼저 재접촉 추천";
+        } else {
+          recommendedVisitWindow = "우선순위 낮음 — 다른 학교 진행 후 검토";
+        }
+      }
     }
 
     // AI 생성 이력 로그 (schools_detail/{id}/ai_logs) — 재생성 추적용
@@ -275,6 +298,8 @@ export async function POST(req: NextRequest) {
       score: scoreValue,
       factors: computedFactors,
       installedNeighbors,
+      expectedContractAmount,
+      recommendedVisitWindow,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "알 수 없는 오류";
