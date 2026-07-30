@@ -23,6 +23,8 @@ import { RegionContractChart, MonthlyContractChart } from "@/components/dashboar
 import { PipelineOverview } from "@/components/dashboard/PipelineOverview";
 import { TopSchoolsList } from "@/components/dashboard/TopSchoolsList";
 import { TodayMeetings } from "@/components/dashboard/TodayMeetings";
+import { AiBriefingCard } from "@/components/dashboard/AiBriefingCard";
+import { BudgetRecommendations } from "@/components/dashboard/BudgetRecommendations";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
@@ -164,6 +166,10 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-4">
+        <AiBriefingCard />
+      </div>
+
+      <div className="mt-4">
         <PipelineOverview counts={stageCounts} />
       </div>
 
@@ -191,6 +197,10 @@ export default function DashboardPage() {
 
       <div className="mt-4">
         <TodayMeetings />
+      </div>
+
+      <div className="mt-4">
+        <BudgetRecommendations />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

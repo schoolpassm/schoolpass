@@ -124,6 +124,8 @@ export interface SchoolSummaryDoc {
   partnerId?: string;
   eduOfficeId?: string;
   eduOfficeName?: string;
+  financeRevenueTotal?: number; // 학교회계 세입 규모 (예산기반 추천용, 요약에도 반영)
+  developmentFundTotal?: number; // 학교발전기금 (예산기반 추천용)
   tags: string[];
   isNewlyOpened?: boolean;
   aiScore?: number | null;

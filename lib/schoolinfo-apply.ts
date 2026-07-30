@@ -57,6 +57,8 @@ export async function applySchoolinfoRows(
       const summaryPatch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
       if ("studentCount" in fields) summaryPatch.studentCount = fields.studentCount;
       if ("eduOfficeName" in fields) summaryPatch.eduOfficeName = fields.eduOfficeName;
+      if ("financeRevenueTotal" in fields) summaryPatch.financeRevenueTotal = fields.financeRevenueTotal;
+      if ("developmentFundTotal" in fields) summaryPatch.developmentFundTotal = fields.developmentFundTotal;
       if (Object.keys(summaryPatch).length > 1) {
         batch.set(db.collection("schools_summary").doc(docId), summaryPatch, { merge: true });
       }

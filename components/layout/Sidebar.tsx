@@ -15,12 +15,14 @@ import {
   CalendarDays,
   FolderOpen,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
+  { href: "/copilot", label: "AI Copilot", icon: Sparkles },
   { href: "/schools", label: "학교관리", icon: School },
   { href: "/education-offices", label: "교육지원청", icon: Building2 },
   { href: "/sales", label: "영업관리", icon: PhoneCall },

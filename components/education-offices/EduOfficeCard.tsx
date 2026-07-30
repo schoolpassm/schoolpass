@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { orderBy } from "firebase/firestore";
-import { Phone, Mail, Building2, ChevronDown, ChevronUp } from "lucide-react";
+import { Phone, Mail, Building2, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useCollection } from "@/lib/hooks/useCollection";
+import { useAuth } from "@/lib/auth-context";
 import { EducationOfficeDoc, EduOfficeEventDoc, EduOfficeEventType } from "@/types";
 import { addEduOfficeEvent } from "@/lib/api/educationOffices";
 import { formatDate, toTel, toMailto } from "@/lib/utils";
@@ -23,11 +24,38 @@ export function EduOfficeCard({ office }: { office: EducationOfficeDoc }) {
   ]);
   const [type, setType] = useState<EduOfficeEventType>("visit");
   const [summary, setSummary] = useState("");
+  const { firebaseUser } = useAuth();
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<{ text: string; stats: { total: number; installed: number; contracted: number; rate: number } } | null>(
+    null
+  );
+  const [aiError, setAiError] = useState<string | null>(null);
 
   async function handleAdd() {
     if (!summary.trim()) return;
     await addEduOfficeEvent(office.id, { type, summary: summary.trim(), scheduledAt: null, authorUid: "", authorName: "" });
     setSummary("");
+  }
+
+  async function handleAiAnalyze() {
+    if (!firebaseUser) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch("/api/ai/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "eduoffice_analysis", eduOfficeName: office.name }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "분석 실패");
+      setAiResult({ text: json.text, stats: json.stats });
+    } catch (e: any) {
+      setAiError(e.message || "오류가 발생했습니다.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   return (
@@ -59,7 +87,23 @@ export function EduOfficeCard({ office }: { office: EducationOfficeDoc }) {
             <Mail size={12} /> 이메일
           </button>
         </a>
+        <Button size="sm" variant="secondary" onClick={handleAiAnalyze} disabled={aiLoading}>
+          <Sparkles size={12} className={aiLoading ? "animate-pulse" : ""} /> {aiLoading ? "분석 중..." : "AI 분석"}
+        </Button>
       </div>
+
+      {aiError && <p className="mt-2 text-xs text-status-danger">{aiError}</p>}
+      {aiResult && (
+        <div className="mt-3 rounded-lg bg-primary-50/50 p-3">
+          <div className="mb-2 flex gap-4 text-[11px] text-ink-500">
+            <span>관할 학교 {aiResult.stats.total}곳</span>
+            <span>구축 {aiResult.stats.installed}곳</span>
+            <span>계약중 {aiResult.stats.contracted}곳</span>
+            <span className="font-semibold text-primary-600">계약률 {aiResult.stats.rate}%</span>
+          </div>
+          <p className="whitespace-pre-wrap text-xs text-ink-700">{aiResult.text}</p>
+        </div>
+      )}
 
       {open && (
         <div className="mt-4 border-t border-surface-border pt-3">
