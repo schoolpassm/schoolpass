@@ -1,17 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { Database } from "lucide-react";
+import { addDoc, collection, orderBy, limit, serverTimestamp } from "firebase/firestore";
+import { Database, History } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { useAuth } from "@/lib/auth-context";
+import { useCollection } from "@/lib/hooks/useCollection";
+import { db } from "@/lib/firebase";
 import { SCHOOLINFO_LEVEL_CODES, SCHOOLINFO_CATEGORIES, SchoolinfoCategory } from "@/lib/schoolinfo";
 import { SIGUNGU_CODES } from "@/lib/schoolinfo-regions";
+import { formatDate } from "@/lib/utils";
 
 const SIDO_OPTIONS = Array.from(
   new Map(SIGUNGU_CODES.filter((s) => s.sidoCode !== "00").map((s) => [s.sidoCode, s.sidoName])).entries()
 );
+
+interface SyncLogDoc {
+  category: string;
+  categoryLabel: string;
+  year: number;
+  sidoName: string;
+  matched: number;
+  unmatched: number;
+  failedChunks: number;
+  createdByName: string;
+  createdAt: any;
+}
 
 interface Totals {
   matched: number;
@@ -19,16 +35,21 @@ interface Totals {
   unmatched: number;
   rowCount: number;
   failedChunks: number;
+  unmatchedSample: string[];
 }
 
+const ALL_SIDO_VALUE = "ALL";
+
 export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, userDoc } = useAuth();
+  const { data: recentLogs } = useCollection<SyncLogDoc>("sync_logs", [orderBy("createdAt", "desc"), limit(5)]);
   const [category, setCategory] = useState<SchoolinfoCategory>("student_count");
   const [year, setYear] = useState(new Date().getFullYear());
   const [levels, setLevels] = useState<Set<string>>(new Set(["02"]));
   const [sidoCode, setSidoCode] = useState(SIDO_OPTIONS[0]?.[0] ?? "");
   const [syncing, setSyncing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [currentSidoLabel, setCurrentSidoLabel] = useState<string | null>(null);
   const [result, setResult] = useState<Totals | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -42,15 +63,58 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     });
   }
 
-  async function callChunk(levelCode: string, sggCode: string, regionHint: string, token: string) {
+  async function callChunk(levelCode: string, sggCode: string, thisSidoCode: string, regionHint: string, token: string) {
     const res = await fetch("/api/schools/sync-public-data-chunk", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ category, year, levelCode, sggCode, sidoCode, regionHint }),
+      body: JSON.stringify({ category, year, levelCode, sggCode, sidoCode: thisSidoCode, regionHint }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json?.error || "청크 동기화 실패");
-    return json as { matched: number; matchedByName: number; unmatched: number; rowCount: number };
+    return json as { matched: number; matchedByName: number; unmatched: number; rowCount: number; unmatchedSample: string[] };
+  }
+
+  /** 시/도 하나에 대한 전체 작업(레벨×시군구)을 처리하고 누계에 더한다 */
+  async function runOneSido(thisSidoCode: string, thisSidoName: string, token: string, totals: Totals, overallDoneRef: { done: number; total: number }) {
+    const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === thisSidoCode && s.sggCode !== "00000");
+    const tasks: { levelCode: string; sggCode: string }[] = [];
+    for (const levelCode of levels) {
+      for (const d of districts) tasks.push({ levelCode, sggCode: d.sggCode });
+    }
+
+    const CONCURRENCY = 3;
+    for (let i = 0; i < tasks.length; i += CONCURRENCY) {
+      const batch = tasks.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (t) => {
+          const attempts = [0, 1000, 2500];
+          let lastErr: any = null;
+          for (const delay of attempts) {
+            if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+            try {
+              return await callChunk(t.levelCode, t.sggCode, thisSidoCode, thisSidoName, token);
+            } catch (e: any) {
+              lastErr = e;
+            }
+          }
+          setLastError(lastErr?.message || String(lastErr));
+          totals.failedChunks += 1;
+          return null;
+        })
+      );
+      for (const r of results) {
+        if (!r) continue;
+        totals.matched += r.matched;
+        totals.matchedByName += r.matchedByName;
+        totals.unmatched += r.unmatched;
+        totals.rowCount += r.rowCount;
+        if (r.unmatchedSample && totals.unmatchedSample.length < 15) {
+          totals.unmatchedSample.push(...r.unmatchedSample.slice(0, 15 - totals.unmatchedSample.length));
+        }
+      }
+      overallDoneRef.done += Math.min(CONCURRENCY, batch.length);
+      setProgress({ done: overallDoneRef.done, total: overallDoneRef.total });
+    }
   }
 
   async function handleSync() {
@@ -59,49 +123,45 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     setError(null);
     setResult(null);
     setLastError(null);
+    setCurrentSidoLabel(null);
 
-    const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === sidoCode && s.sggCode !== "00000");
-    const regionHint = districts[0]?.sidoName ?? "";
-    const tasks: { levelCode: string; sggCode: string }[] = [];
-    for (const levelCode of levels) {
-      for (const d of districts) tasks.push({ levelCode, sggCode: d.sggCode });
+    const isAllSido = sidoCode === ALL_SIDO_VALUE;
+    const targetSidos = isAllSido ? SIDO_OPTIONS : SIDO_OPTIONS.filter(([code]) => code === sidoCode);
+
+    // 전체 작업 개수를 미리 계산해 진행률 분모로 사용
+    let totalTasks = 0;
+    for (const [code] of targetSidos) {
+      const districtCount = SIGUNGU_CODES.filter((s) => s.sidoCode === code && s.sggCode !== "00000").length;
+      totalTasks += districtCount * levels.size;
     }
-    setProgress({ done: 0, total: tasks.length });
+    const overallDoneRef = { done: 0, total: totalTasks };
+    setProgress({ done: 0, total: totalTasks });
 
-    const totals: Totals = { matched: 0, matchedByName: 0, unmatched: 0, rowCount: 0, failedChunks: 0 };
+    const totals: Totals = { matched: 0, matchedByName: 0, unmatched: 0, rowCount: 0, failedChunks: 0, unmatchedSample: [] };
 
     try {
       const token = await firebaseUser.getIdToken();
-      const CONCURRENCY = 3;
-      for (let i = 0; i < tasks.length; i += CONCURRENCY) {
-        const batch = tasks.slice(i, i + CONCURRENCY);
-        const results = await Promise.all(
-          batch.map(async (t) => {
-            try {
-              return await callChunk(t.levelCode, t.sggCode, regionHint, token);
-            } catch (e1: any) {
-              // 외부 서버 일시 지연/타임아웃 대비 1회 자동 재시도
-              try {
-                await new Promise((r) => setTimeout(r, 1000));
-                return await callChunk(t.levelCode, t.sggCode, regionHint, token);
-              } catch (e2: any) {
-                setLastError(e2.message || String(e2));
-                totals.failedChunks += 1;
-                return null;
-              }
-            }
-          })
-        );
-        for (const r of results) {
-          if (!r) continue;
-          totals.matched += r.matched;
-          totals.matchedByName += r.matchedByName;
-          totals.unmatched += r.unmatched;
-          totals.rowCount += r.rowCount;
-        }
-        setProgress({ done: Math.min(i + CONCURRENCY, tasks.length), total: tasks.length });
+      for (const [code, name] of targetSidos) {
+        setCurrentSidoLabel(name);
+        await runOneSido(code, name, token, totals, overallDoneRef);
       }
       setResult(totals);
+      setCurrentSidoLabel(null);
+      try {
+        await addDoc(collection(db, "sync_logs"), {
+          category,
+          categoryLabel: SCHOOLINFO_CATEGORIES[category].label,
+          year,
+          sidoName: isAllSido ? "전국" : targetSidos[0]?.[1] ?? "",
+          matched: totals.matched,
+          unmatched: totals.unmatched,
+          failedChunks: totals.failedChunks,
+          createdByName: userDoc?.name ?? "",
+          createdAt: serverTimestamp(),
+        });
+      } catch {
+        // 이력 기록 실패는 동기화 결과 자체에 영향 없으므로 조용히 무시
+      }
     } catch (e: any) {
       setError(e.message || "동기화 중 오류가 발생했습니다.");
     } finally {
@@ -133,6 +193,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
 
         <Field label="시/도">
           <Select value={sidoCode} onChange={(e) => setSidoCode(e.target.value)} disabled={syncing}>
+            <option value={ALL_SIDO_VALUE}>🌏 전국 (17개 시/도 자동 순회 — 시간이 오래 걸립니다)</option>
             {SIDO_OPTIONS.map(([code, name]) => (
               <option key={code} value={code}>
                 {name}
@@ -165,7 +226,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
           <div>
             <div className="mb-1 flex justify-between text-[11px] text-ink-500">
               <span>
-                진행 중... ({progress.done}/{progress.total})
+                {currentSidoLabel && `${currentSidoLabel} 처리 중 · `}진행 중... ({progress.done}/{progress.total})
               </span>
               <span>{progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%</span>
             </div>
@@ -185,8 +246,37 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
             {result.failedChunks > 0 && ` · 실패한 요청 ${result.failedChunks}건`}
           </div>
         )}
+        {result && result.unmatchedSample.length > 0 && (
+          <div className="rounded-lg bg-amber-50 p-3 text-[11px] text-amber-700">
+            <p className="mb-1 font-medium">매칭 안 된 학교명 샘플 (최대 15개):</p>
+            <p>{result.unmatchedSample.join(", ")}</p>
+            <p className="mt-1 text-amber-600">
+              보통 학교명 표기 차이(공백/괄호 등) 또는 아직 DB에 없는 학교인 경우입니다.
+            </p>
+          </div>
+        )}
         {error && <div className="rounded-lg bg-red-50 p-3 text-xs text-status-danger">{error}</div>}
         {lastError && <p className="text-[11px] text-status-danger">최근 실패 사유: {lastError}</p>}
+
+        {recentLogs.length > 0 && (
+          <div className="rounded-lg border border-surface-border p-3">
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-ink-500">
+              <History size={12} /> 최근 동기화 이력
+            </p>
+            <ul className="space-y-1 text-[11px] text-ink-500">
+              {recentLogs.map((log) => (
+                <li key={log.id} className="flex justify-between">
+                  <span>
+                    {log.categoryLabel} · {log.sidoName} · {log.year}년
+                  </span>
+                  <span>
+                    매칭 {log.matched}건 · {formatDate(log.createdAt, true)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
