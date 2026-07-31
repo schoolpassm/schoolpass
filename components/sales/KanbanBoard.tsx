@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import Link from "next/link";
 import { limit, orderBy, where } from "firebase/firestore";
+import { ArrowDownWideNarrow, Sparkles } from "lucide-react";
 import { PIPELINE_STAGES, SchoolSummaryDoc, SchoolStatus } from "@/types";
 import { GradeBadge } from "@/components/ui/Badge";
 import { updateSchoolStatus } from "@/lib/api/schools";
@@ -27,8 +29,11 @@ const STAGE_ACCENT: Record<SchoolStatus, string> = {
 // 컬럼당 최대 100건만 조회 — 학교가 10만 건이어도 칸반보드 로딩비용은 일정하게 유지된다.
 const COLUMN_LIMIT = 100;
 
+type SortMode = "updatedAt" | "aiScore";
+
 export function KanbanBoard() {
   const { firebaseUser, userDoc } = useAuth();
+  const [sortMode, setSortMode] = useState<SortMode>("updatedAt");
 
   async function handleDragEnd(result: DropResult) {
     const { destination, draggableId, source } = result;
@@ -38,21 +43,48 @@ export function KanbanBoard() {
   }
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex gap-3 overflow-x-auto pb-4">
-        {PIPELINE_STAGES.map((stage) => (
-          <KanbanColumn key={stage} stage={stage} />
-        ))}
+    <div>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-xs text-ink-500">정렬 기준:</span>
+        <button
+          onClick={() => setSortMode("updatedAt")}
+          className={cn(
+            "flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium",
+            sortMode === "updatedAt" ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
+          )}
+        >
+          <ArrowDownWideNarrow size={12} /> 최근 업데이트순
+        </button>
+        <button
+          onClick={() => setSortMode("aiScore")}
+          className={cn(
+            "flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium",
+            sortMode === "aiScore" ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
+          )}
+        >
+          <Sparkles size={12} /> 계약가능성(AI 점수)순
+        </button>
+        {sortMode === "aiScore" && (
+          <span className="text-[11px] text-amber-600">※ AI 점수를 아직 안 매긴 학교는 이 정렬에서 안 보입니다</span>
+        )}
       </div>
-    </DragDropContext>
+
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {PIPELINE_STAGES.map((stage) => (
+            <KanbanColumn key={`${stage}-${sortMode}`} stage={stage} sortMode={sortMode} />
+          ))}
+        </div>
+      </DragDropContext>
+    </div>
   );
 }
 
-function KanbanColumn({ stage }: { stage: SchoolStatus }) {
+function KanbanColumn({ stage, sortMode }: { stage: SchoolStatus; sortMode: SortMode }) {
   // 각 컬럼이 독립적으로 실시간 구독 — status 필터 + limit(100)으로 bounded read 유지
   const { data: schools, loading, error } = useCollection<SchoolSummaryDoc>("schools_summary", [
     where("status", "==", stage),
-    orderBy("updatedAt", "desc"),
+    orderBy(sortMode, "desc"),
     limit(COLUMN_LIMIT),
   ]);
 
