@@ -205,6 +205,14 @@
       "collectionGroup": "schools_summary",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "aiScore", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "schools_summary",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "eduOfficeName", "order": "ASCENDING" },
         { "fieldPath": "aiScore", "order": "DESCENDING" }
       ]
