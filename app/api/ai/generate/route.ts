@@ -44,6 +44,8 @@ const VALID_ACTIONS: AiAction[] = [
  * 실제 데이터를 조회해 "실제 확인된 근거"와 "인근/유사 구축학교" 목록을 계산한다.
  * AI는 여기서 계산된 사실만 근거로 사용하도록 프롬프트에서 강제한다 (환각 방지).
  * 모든 쿼리는 schools_summary에 bounded(limit)로만 접근해 전체 스캔을 피한다.
+ * (2개의 독립 쿼리를 Promise.all로 병렬 실행해 응답시간을 단축한다 — Vercel Hobby 플랜의
+ *  짧은 함수 실행시간 제한 안에 들어오도록 하기 위한 최적화)
  */
 async function computeFactorsAndNeighbors(
   db: FirebaseFirestore.Firestore,
@@ -52,21 +54,16 @@ async function computeFactorsAndNeighbors(
   const computedFactors: { label: string; positive: boolean }[] = [];
   const installedNeighbors: InstalledNeighbor[] = [];
 
-  // 1) 같은 지역(교육청) 내 설치완료(구축) 학교 수 — count() 집계쿼리로 전체 문서를 읽지 않고 개수만 확인
-  let installedInRegionCount = 0;
-  try {
-    const countSnap = await db
-      .collection("schools_summary")
-      .where("region", "==", school.region)
-      .where("status", "==", "설치완료")
-      .count()
-      .get();
-    installedInRegionCount = countSnap.data().count;
+  const [countResult, neighborResult] = await Promise.allSettled([
+    db.collection("schools_summary").where("region", "==", school.region).where("status", "==", "설치완료").count().get(),
+    db.collection("schools_summary").where("region", "==", school.region).where("status", "==", "설치완료").limit(20).get(),
+  ]);
+
+  if (countResult.status === "fulfilled") {
+    const installedInRegionCount = countResult.value.data().count;
     if (installedInRegionCount > 0) {
       computedFactors.push({ label: `같은 지역(${school.region}) 구축학교 ${installedInRegionCount}곳`, positive: true });
     }
-  } catch {
-    // count() 미지원 환경 대비 — 실패해도 나머지 로직은 계속 진행
   }
 
   // 2) 학생수 규모 (전체 평균과 비교할 근거 데이터가 없으므로, 절대적 기준으로 판단)
@@ -131,16 +128,9 @@ async function computeFactorsAndNeighbors(
     computedFactors.push({ label: "접촉 이력 없음 (첫 접근 필요)", positive: false });
   }
 
-  // 4) 인근/유사 구축학교 후보 조회 (같은 지역, 설치완료 상태, 최대 20건 bounded)
-  try {
-    const neighborSnap = await db
-      .collection("schools_summary")
-      .where("region", "==", school.region)
-      .where("status", "==", "설치완료")
-      .limit(20)
-      .get();
-
-    const candidates = neighborSnap.docs
+  // 4) 인근/유사 구축학교 후보 (위에서 병렬로 이미 받아온 결과 사용)
+  if (neighborResult.status === "fulfilled") {
+    const candidates = neighborResult.value.docs
       .filter((d) => d.id !== school.id)
       .map((d) => {
         const data = d.data();
@@ -175,8 +165,6 @@ async function computeFactorsAndNeighbors(
         computedFactors.push({ label: `가장 가까운 구축학교 ${nearest.name} (${nearest.distanceKm.toFixed(1)}km)`, positive: true });
       }
     }
-  } catch (err) {
-    console.error("nearby neighbor query failed", err);
   }
 
   return { computedFactors, installedNeighbors, daysSinceLastContact };
@@ -207,23 +195,20 @@ export async function POST(req: NextRequest) {
     }
     const school: any = { id: schoolId, ...schoolSnap.data()! };
 
-    // 최근 활동기록 5건
-    const activitiesSnap = await db
-      .collection("schools_detail")
-      .doc(schoolId)
-      .collection("activities")
-      .orderBy("createdAt", "desc")
-      .limit(5)
-      .get();
-    const recentActivitySummaries = activitiesSnap.docs.map((d) => `[${d.get("type")}] ${d.get("summary")}`);
+    // 서로 의존관계 없는 조회들을 한 번에 병렬 실행해 응답시간을 단축한다
+    // (Vercel Hobby 플랜의 짧은 함수 실행시간 제한 안에 들어오도록 하기 위한 핵심 최적화)
+    const [activitiesSnap, casesSnap, factorsResult, recentContractsSnap] = await Promise.all([
+      db.collection("schools_detail").doc(schoolId).collection("activities").orderBy("createdAt", "desc").limit(5).get(),
+      db.collection("cases").where("region", "==", school.region).limit(3).get(),
+      computeFactorsAndNeighbors(db, school),
+      action === "score" ? db.collection("contracts").orderBy("contractDate", "desc").limit(200).get() : Promise.resolve(null),
+    ]);
 
-    // 같은 지역 구축사례(후기) 3건
-    const casesSnap = await db.collection("cases").where("region", "==", school.region).limit(3).get();
+    const recentActivitySummaries = activitiesSnap.docs.map((d) => `[${d.get("type")}] ${d.get("summary")}`);
     const nearbyCaseSummaries = casesSnap.docs.map(
       (d) => `${d.get("schoolName")} (${d.get("installYear")}년 설치) - ${d.get("review") || "후기 없음"}`
     );
-
-    const { computedFactors, installedNeighbors, daysSinceLastContact } = await computeFactorsAndNeighbors(db, school);
+    const { computedFactors, installedNeighbors, daysSinceLastContact } = factorsResult;
 
     const ctx: SchoolContext = {
       name: school.name,
@@ -254,9 +239,8 @@ export async function POST(req: NextRequest) {
       const match = text.match(/점수[:\s]*([0-9]{1,3})/);
       if (match) scoreValue = Math.min(100, parseInt(match[1], 10));
 
-      if (scoreValue != null) {
-        // 예상 계약금액: 최근 계약 200건의 평균 금액 × 점수 비율 (bounded 쿼리, 전체 스캔 아님)
-        const recentContractsSnap = await db.collection("contracts").orderBy("contractDate", "desc").limit(200).get();
+      if (scoreValue != null && recentContractsSnap) {
+        // 예상 계약금액: 최근 계약 200건의 평균 금액 × 점수 비율 (위에서 이미 병렬로 조회해둔 결과 사용)
         const amounts = recentContractsSnap.docs.map((d) => d.get("contractAmount")).filter((a) => typeof a === "number");
         if (amounts.length > 0) {
           const avg = amounts.reduce((a: number, b: number) => a + b, 0) / amounts.length;
@@ -276,19 +260,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // AI 생성 이력 로그 (schools_detail/{id}/ai_logs) — 재생성 추적용
-    await db
-      .collection("schools_detail")
+    // AI 생성 이력 로그 — 응답을 늦추지 않도록 await 하지 않고 백그라운드로 기록만 시도한다
+    // (실패해도 사용자 응답에는 영향 없음, 감사용 로그일 뿐 핵심 기능 아님)
+    db.collection("schools_detail")
       .doc(schoolId)
       .collection("ai_logs")
-      .add({
-        action,
-        model,
-        resultText: text,
-        score: scoreValue,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      .add({ action, model, resultText: text, score: scoreValue, createdAt: new Date(), updatedAt: new Date() })
+      .catch((err) => console.error("ai_logs write failed", err));
 
     return NextResponse.json({
       ok: true,
