@@ -1,0 +1,36 @@
+name: Deploy Firestore Rules & Indexes
+
+# firestore.rules, firestore.indexes.json, storage.rules 파일이 main 브랜치에 push될 때만 자동 실행.
+# Vercel은 앱 코드만 배포하고 Firebase 설정(규칙/인덱스)은 전혀 모르기 때문에,
+# 이 워크플로우가 그 부분을 대신 자동화한다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+      - "firebase.json"
+
+jobs:
+  deploy-firebase-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Firebase CLI 설치
+        run: npm install -g firebase-tools
+
+      - name: 서비스 계정 키 파일 생성
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > /tmp/firebase-service-account.json
+
+      - name: Firestore 규칙 + 인덱스 + Storage 규칙 배포
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-service-account.json
+        run: firebase deploy --only firestore:rules,firestore:indexes,storage --project ${{ secrets.FIREBASE_PROJECT_ID }} --non-interactive
