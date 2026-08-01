@@ -258,6 +258,15 @@
       ]
     },
     {
+      "collectionGroup": "schools_detail",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "region", "order": "ASCENDING" },
+        { "fieldPath": "syncedFromNeis", "order": "ASCENDING" },
+        { "fieldPath": "isClosed", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "activities",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
