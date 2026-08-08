@@ -38,6 +38,8 @@ export interface SchoolinfoCategoryMeta {
 export const SCHOOLINFO_CATEGORIES: Record<SchoolinfoCategory, SchoolinfoCategoryMeta> = {
   student_count: { apiType: "09", label: "학생수·학급수" },
   teacher_count: { apiType: "22", label: "교직원수" },
+  // depthNo(10:예산 20:결산) + depthNo2(1:세입예산 2:세출예산 3:세입결산 4:세출결산) 둘 다 필수.
+  // "세입 규모" 판단이 목적이므로 결산(확정치) 기준 세입(depthNo2=3)을 사용한다.
   finance: { apiType: "27", label: "학교회계(세입 규모)", extraParams: { depthNo: "20", depthNo2: "3" } },
   development_fund: { apiType: "30", label: "학교발전기금" },
   support_facility: { apiType: "18", label: "학생지원시설" },
@@ -59,6 +61,7 @@ export function extractFieldsForCategory(category: SchoolinfoCategory, row: Scho
     return isNaN(n) ? undefined : n;
   };
 
+  // JU_ORG_NM(교육지원청명)은 모든 카테고리 응답에 공통으로 포함되어 있어, 어떤 동기화를 돌리든 항상 반영한다.
   const common: Record<string, unknown> = row.JU_ORG_NM ? { eduOfficeName: String(row.JU_ORG_NM) } : {};
 
   switch (category) {
@@ -68,7 +71,7 @@ export function extractFieldsForCategory(category: SchoolinfoCategory, row: Scho
       return { ...common, ...(studentCount != null && { studentCount }), ...(classCount != null && { classCount }) };
     }
     case "teacher_count": {
-      const teacherCount = num(row.COL_S);
+      const teacherCount = num(row.COL_S); // 총계(계)
       return { ...common, ...(teacherCount != null && { teacherCount }) };
     }
     case "finance": {
@@ -107,6 +110,10 @@ export function extractFieldsForCategory(category: SchoolinfoCategory, row: Scho
   }
 }
 
+/**
+ * 응답 JSON의 정확한 감싸는 구조(envelope)가 문서화되어 있지 않아,
+ * 어떤 형태로 오든 "SCHUL_CODE 필드를 가진 객체 배열"을 재귀적으로 찾아내는 방식으로 방어적으로 파싱한다.
+ */
 function findRecordArray(node: unknown, depth = 0): any[] | null {
   if (depth > 6 || node == null) return null;
   if (Array.isArray(node)) {
@@ -150,6 +157,9 @@ export async function fetchSchoolinfoRows(
     ...(SCHOOLINFO_CATEGORIES[category].extraParams ?? {}),
   });
 
+  // Vercel 플랫폼이 함수를 강제 종료시키면 JSON이 아닌 에러 페이지가 그대로 반환되어
+  // "Unexpected token" 파싱 에러로 이어진다. 그 전에 우리가 먼저 8초 타임아웃을 걸어
+  // 깔끔한 에러 메시지를 던지도록 한다 (학교알리미 서버가 느리거나 응답이 없을 때 대비).
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -158,4 +168,35 @@ export async function fetchSchoolinfoRows(
     res = await fetch(`${SCHOOLINFO_BASE_URL}?${params.toString()}`, { cache: "no-store", signal: controller.signal });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("학교알리미 서버 응답 지연(8초
+      throw new Error("학교알리미 서버 응답 지연(8초 초과)으로 이번 요청을 건너뜁니다. 재시도하면 될 수 있습니다.");
+    }
+    throw new Error(`학교알리미 서버 연결 실패: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const rawText = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`학교알리미 API 요청 실패 (${res.status}): ${rawText.slice(0, 200)}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error(`학교알리미 응답이 JSON이 아님: ${rawText.slice(0, 200)}`);
+  }
+
+  const OK_CODES = new Set(["success", "00", "0", "info-000", "ok"]);
+  if (json && typeof json === "object" && ("resultCode" in (json as any) || "RESULT" in (json as any))) {
+    const errObj = (json as any).resultCode ? json : (json as any).RESULT;
+    const code = errObj?.resultCode ?? errObj?.CODE;
+    const msg = errObj?.resultMsg ?? errObj?.MESSAGE;
+    if (code && !OK_CODES.has(String(code).toLowerCase())) {
+      throw new Error(`학교알리미 API 오류 응답 [${code}]: ${msg ?? rawText.slice(0, 200)}`);
+    }
+  }
+
+  return (findRecordArray(json) ?? []) as SchoolinfoRow[];
+}
