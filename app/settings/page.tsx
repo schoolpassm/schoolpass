@@ -4,10 +4,12 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
-import { ShieldAlert, RefreshCw } from "lucide-react";
+import { ShieldAlert, RefreshCw, UserPlus } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Field, Input, Select } from "@/components/ui/Input";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { UserDoc, UserRole } from "@/types";
 import { db } from "@/lib/firebase";
@@ -15,10 +17,88 @@ import { useAuth } from "@/lib/auth-context";
 
 const ROLE_LABEL: Record<UserRole, string> = { admin: "관리자", manager: "매니저", partner: "파트너" };
 
+function NewMemberModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { firebaseUser } = useAuth();
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "partner" as UserRole, region: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!firebaseUser) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch("/api/users/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "계정 생성 실패");
+      setSuccess(`계정 생성 완료! ${form.email} / 비밀번호는 알려주신 임시비밀번호로 로그인 가능합니다.`);
+      setForm({ name: "", email: "", password: "", role: "partner", region: "" });
+    } catch (e: any) {
+      setError(e.message || "오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="새 팀원 계정 추가">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-xs text-ink-500">
+          여기서 만든 계정으로 팀원이 바로 로그인할 수 있습니다. 임시 비밀번호는 첫 로그인 후 직접 바꾸도록 안내해주세요.
+        </p>
+        <Field label="이름">
+          <Input required value={form.name} onChange={(e) => set("name", e.target.value)} />
+        </Field>
+        <Field label="이메일 (로그인 아이디)">
+          <Input required type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+        </Field>
+        <Field label="임시 비밀번호 (최소 6자)">
+          <Input required type="text" value={form.password} onChange={(e) => set("password", e.target.value)} />
+        </Field>
+        <Field label="권한">
+          <Select value={form.role} onChange={(e) => set("role", e.target.value as UserRole)}>
+            <option value="partner">파트너 (영업담당)</option>
+            <option value="manager">매니저</option>
+            <option value="admin">관리자</option>
+          </Select>
+        </Field>
+        <Field label="담당권역 (선택)">
+          <Input placeholder="예: 경기도 용인시" value={form.region} onChange={(e) => set("region", e.target.value)} />
+        </Field>
+
+        {error && <p className="text-xs text-status-danger">{error}</p>}
+        {success && <p className="text-xs text-emerald-600">{success}</p>}
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            닫기
+          </Button>
+          <Button type="submit" disabled={saving}>
+            <UserPlus size={14} /> {saving ? "생성 중..." : "계정 생성"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function SettingsPage() {
   const { data: users, loading } = useCollection<UserDoc>("users");
   const { isAdmin, firebaseUser } = useAuth();
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
 
   async function syncClaims(targetUid?: string) {
     if (!firebaseUser) return;
@@ -74,6 +154,11 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>사용자 · 권한 관리</CardTitle>
+          {isAdmin && (
+            <Button size="sm" onClick={() => setAddMemberOpen(true)}>
+              <UserPlus size={14} /> 새 팀원 추가
+            </Button>
+          )}
         </CardHeader>
         <CardBody className="p-0">
           <table className="w-full text-sm">
@@ -120,7 +205,7 @@ export default function SettingsPage() {
               {users.length === 0 && !loading && (
                 <tr>
                   <td colSpan={5} className="px-5 py-16 text-center text-sm text-ink-300">
-                    등록된 사용자가 없습니다. Firebase Console에서 계정을 생성한 뒤 users 컬렉션에 문서를 추가하세요.
+                    등록된 사용자가 없습니다. 위 "새 팀원 추가" 버튼으로 계정을 만드세요.
                   </td>
                 </tr>
               )}
@@ -128,6 +213,8 @@ export default function SettingsPage() {
           </table>
         </CardBody>
       </Card>
+
+      <NewMemberModal open={addMemberOpen} onClose={() => setAddMemberOpen(false)} />
     </AppShell>
   );
 }

@@ -23,7 +23,11 @@ export default function SchoolDetailPage({ params }: { params: { schoolId: strin
       {school && (
         <div className="space-y-4">
           <SchoolDetailHeader school={school} />
-          <AiToolsPanel schoolId={school.id} schoolName={school.name} />
+          <AiToolsPanel
+            schoolId={school.id}
+            schoolName={school.name}
+            contactEmail={school.contactEmail || school.email}
+          />
           <Card>
             <CardBody>
               <Tabs

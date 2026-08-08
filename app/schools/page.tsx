@@ -16,6 +16,7 @@ import { NeisSyncModal } from "@/components/schools/NeisSyncModal";
 import { StudentCountSyncModal } from "@/components/schools/StudentCountSyncModal";
 import { BulkScoreModal } from "@/components/schools/BulkScoreModal";
 import { useSchoolsPaginated } from "@/lib/hooks/useSchoolsPaginated";
+import { useSchoolsCount } from "@/lib/hooks/useSchoolsCount";
 import { useInfiniteScrollSentinel } from "@/lib/hooks/useInfiniteScrollSentinel";
 import { SchoolGrade, SchoolLevel, SchoolStatus } from "@/types";
 import { exportSchoolsToExcel, parseSchoolExcel, downloadSchoolTemplate } from "@/lib/excel";
@@ -71,6 +72,7 @@ function SchoolsPageInner() {
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSchoolsPaginated(filters);
   const schools = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
+  const { count: totalCount, loading: countLoading } = useSchoolsCount(filters);
 
   const sentinelRef = useInfiniteScrollSentinel(
     useCallback(() => {
@@ -209,6 +211,8 @@ function SchoolsPageInner() {
           ))}
         </Select>
         <span className="flex items-center px-2 text-xs text-ink-500">
+          {countLoading ? "학교수 계산 중..." : totalCount != null ? `총 ${totalCount.toLocaleString()}개` : ""}
+          {" · "}
           {schools.length}개 불러옴 {isLoading && "· 불러오는 중..."}
         </span>
         {selectedIds.size > 0 && (

@@ -219,6 +219,8 @@ export async function POST(req: NextRequest) {
       status: school.status,
       grade: school.grade,
       ownerName: school.ownerName,
+      contactName: school.contactName,
+      contactTitle: school.contactTitle,
       isNewlyOpened: school.isNewlyOpened,
       hasKindergarten: school.hasKindergarten,
       daysSinceLastContact,
