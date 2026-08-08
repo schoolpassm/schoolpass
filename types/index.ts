@@ -63,6 +63,11 @@ export interface SchoolDoc extends BaseDoc {
   phone?: string;
   adminOfficePhone?: string; // 행정실
   email?: string;
+  // --- 학교측 담당자(개인) 연락처 — 대표 전화/이메일(위)과 별개, 통화 후 개인 메일 발송/휴대폰 저장용 ---
+  contactName?: string; // 담당자 성함
+  contactTitle?: string; // 직책 (예: 행정실장, 교감 등)
+  contactPhone?: string; // 담당자 개인 휴대폰
+  contactEmail?: string; // 담당자 개인 이메일
   eduOfficeId?: string; // 교육지원청 참조 (educationOffices/{id})
   studentCount?: number; // 학생수
   classCount?: number; // 학급수
@@ -119,6 +124,9 @@ export interface SchoolSummaryDoc {
   address?: string; // 빠른액션(지도열기)용, 크기가 작아 요약에 포함
   phone?: string; // 빠른액션(전화/문자)용
   email?: string; // 빠른액션(이메일)용
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
   studentCount?: number;
   ownerName?: string;
   partnerId?: string;

@@ -42,7 +42,15 @@ const ACTIONS: { key: AiAction; label: string; icon: any; hint: string }[] = [
   { key: "proposal", label: "제안서 생성 (PDF)", icon: FileText, hint: "A4 1장 분량 제안서" },
 ];
 
-export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoolName: string }) {
+export function AiToolsPanel({
+  schoolId,
+  schoolName,
+  contactEmail,
+}: {
+  schoolId: string;
+  schoolName: string;
+  contactEmail?: string;
+}) {
   const { firebaseUser, userDoc } = useAuth();
   const [activeAction, setActiveAction] = useState<AiAction | null>(null);
   const [loading, setLoading] = useState(false);
@@ -103,6 +111,20 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
       aiScoreFactors: factors,
     });
     setSaved(true);
+  }
+
+  function handleOpenMailApp() {
+    // AI가 "제목: ..." 형태로 첫 줄에 제목을 쓰는 경우가 많아 시도해서 분리, 없으면 전체를 본문으로
+    const lines = resultText.split("\n");
+    let subject = `${schoolName} SchoolPASS 소개`;
+    let body = resultText;
+    const subjectLine = lines.find((l) => /^제목\s*[:：]/.test(l.trim()));
+    if (subjectLine) {
+      subject = subjectLine.replace(/^제목\s*[:：]/, "").trim();
+      body = lines.filter((l) => l !== subjectLine).join("\n").trim();
+    }
+    const mailto = `mailto:${contactEmail ?? ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
   }
 
   return (
@@ -224,9 +246,14 @@ export function AiToolsPanel({ schoolId, schoolName }: { schoolId: string; schoo
                 </Button>
               )}
               {activeAction === "email" && (
-                <Button size="sm" onClick={() => handleSaveActivity("email")} disabled={saved}>
-                  <Save size={13} /> {saved ? "저장됨" : "이메일기록에 저장"}
-                </Button>
+                <>
+                  <Button size="sm" variant="secondary" onClick={handleOpenMailApp}>
+                    <Mail size={13} /> 메일 앱으로 열기{contactEmail && ` (${contactEmail})`}
+                  </Button>
+                  <Button size="sm" onClick={() => handleSaveActivity("email")} disabled={saved}>
+                    <Save size={13} /> {saved ? "저장됨" : "이메일기록에 저장"}
+                  </Button>
+                </>
               )}
               {activeAction === "sms" && (
                 <Button size="sm" onClick={() => handleSaveActivity("sms")} disabled={saved}>

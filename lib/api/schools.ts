@@ -39,6 +39,9 @@ function toSummaryFields(input: Partial<SchoolDoc>): Partial<SchoolSummaryDoc> {
   if (input.address !== undefined) summary.address = input.address;
   if (input.phone !== undefined) summary.phone = input.phone;
   if (input.email !== undefined) summary.email = input.email;
+  if (input.contactName !== undefined) summary.contactName = input.contactName;
+  if (input.contactPhone !== undefined) summary.contactPhone = input.contactPhone;
+  if (input.contactEmail !== undefined) summary.contactEmail = input.contactEmail;
   if (input.studentCount !== undefined) summary.studentCount = input.studentCount;
   if (input.ownerName !== undefined) summary.ownerName = input.ownerName;
   if (input.partnerId !== undefined) summary.partnerId = input.partnerId;
