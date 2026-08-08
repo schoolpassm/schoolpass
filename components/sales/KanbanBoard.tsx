@@ -4,8 +4,8 @@ import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import Link from "next/link";
 import { limit, orderBy, where } from "firebase/firestore";
-import { ArrowDownWideNarrow, Sparkles } from "lucide-react";
-import { PIPELINE_STAGES, SchoolSummaryDoc, SchoolStatus } from "@/types";
+import { ArrowDownWideNarrow, Sparkles, Users } from "lucide-react";
+import { PIPELINE_STAGES, SchoolSummaryDoc, SchoolStatus, UserDoc } from "@/types";
 import { GradeBadge } from "@/components/ui/Badge";
 import { updateSchoolStatus } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
@@ -28,12 +28,15 @@ const STAGE_ACCENT: Record<SchoolStatus, string> = {
 
 // 컬럼당 최대 100건만 조회 — 학교가 10만 건이어도 칸반보드 로딩비용은 일정하게 유지된다.
 const COLUMN_LIMIT = 100;
+const UNASSIGNED = "__unassigned__";
 
 type SortMode = "updatedAt" | "aiScore";
 
 export function KanbanBoard() {
   const { firebaseUser, userDoc } = useAuth();
   const [sortMode, setSortMode] = useState<SortMode>("updatedAt");
+  const [ownerFilter, setOwnerFilter] = useState<string>(""); // "" = 전체, UNASSIGNED = 담당자 없음, 그 외 = 이름
+  const { data: teamMembers } = useCollection<UserDoc>("users");
 
   async function handleDragEnd(result: DropResult) {
     const { destination, draggableId, source } = result;
@@ -44,7 +47,7 @@ export function KanbanBoard() {
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-ink-500">정렬 기준:</span>
         <button
           onClick={() => setSortMode("updatedAt")}
@@ -67,12 +70,36 @@ export function KanbanBoard() {
         {sortMode === "aiScore" && (
           <span className="text-[11px] text-amber-600">※ AI 점수를 아직 안 매긴 학교는 이 정렬에서 안 보입니다</span>
         )}
+
+        <span className="ml-2 flex items-center gap-1 text-xs text-ink-500">
+          <Users size={12} /> 담당자:
+        </span>
+        <select
+          value={ownerFilter}
+          onChange={(e) => setOwnerFilter(e.target.value)}
+          className="h-8 rounded-md border border-surface-border bg-white px-2 text-xs"
+        >
+          <option value="">전체 팀원</option>
+          {teamMembers
+            .filter((m) => m.name)
+            .map((m) => (
+              <option key={m.id} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          <option value={UNASSIGNED}>담당자 미배정</option>
+        </select>
+        {ownerFilter && (
+          <span className="text-[11px] text-primary-600">
+            "{ownerFilter === UNASSIGNED ? "담당자 미배정" : ownerFilter}" 담당 학교만 표시 중 — 다른 팀원이 이미 진행 중인 곳은 안 보입니다
+          </span>
+        )}
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
           {PIPELINE_STAGES.map((stage) => (
-            <KanbanColumn key={`${stage}-${sortMode}`} stage={stage} sortMode={sortMode} />
+            <KanbanColumn key={`${stage}-${sortMode}`} stage={stage} sortMode={sortMode} ownerFilter={ownerFilter} />
           ))}
         </div>
       </DragDropContext>
@@ -80,13 +107,18 @@ export function KanbanBoard() {
   );
 }
 
-function KanbanColumn({ stage, sortMode }: { stage: SchoolStatus; sortMode: SortMode }) {
+function KanbanColumn({ stage, sortMode, ownerFilter }: { stage: SchoolStatus; sortMode: SortMode; ownerFilter: string }) {
   // 각 컬럼이 독립적으로 실시간 구독 — status 필터 + limit(100)으로 bounded read 유지
-  const { data: schools, loading, error } = useCollection<SchoolSummaryDoc>("schools_summary", [
+  // 담당자 필터는 이미 불러온 100건 안에서 클라이언트단으로 걸러낸다 (별도 쿼리/인덱스 불필요)
+  const { data: rawSchools, loading, error } = useCollection<SchoolSummaryDoc>("schools_summary", [
     where("status", "==", stage),
     orderBy(sortMode, "desc"),
     limit(COLUMN_LIMIT),
   ]);
+
+  const schools = ownerFilter
+    ? rawSchools.filter((s) => (ownerFilter === UNASSIGNED ? !s.ownerName : s.ownerName === ownerFilter))
+    : rawSchools;
 
   return (
     <Droppable droppableId={stage}>
@@ -143,7 +175,17 @@ function KanbanColumn({ stage, sortMode }: { stage: SchoolStatus; sortMode: Sort
                     </div>
                     <p className="text-sm font-medium text-ink-900">{s.name}</p>
                     <p className="mt-0.5 text-xs text-ink-500">{s.region}</p>
-                    <p className="mt-0.5 text-[11px] text-ink-300">담당 {s.ownerName ?? "-"}</p>
+                    <p className="mt-1">
+                      {s.ownerName ? (
+                        <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
+                          담당 {s.ownerName}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-status-danger">
+                          담당자 미배정
+                        </span>
+                      )}
+                    </p>
                   </Link>
                 )}
               </Draggable>
