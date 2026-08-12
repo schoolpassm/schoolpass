@@ -63,7 +63,11 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     });
   }
 
-  async function callChunk(levelCode: string, sggCode: string, thisSidoCode: string, regionHint: string, token: string) {
+  async function callChunk(levelCode: string, sggCode: string, thisSidoCode: string, regionHint: string) {
+    if (!firebaseUser) throw new Error("로그인이 필요합니다.");
+    // 매 요청마다 새로 가져온다 — "전국" 동기화처럼 오래 걸리는 작업 중 1시간짜리 토큰이
+    // 만료되는 걸 막기 위함. Firebase SDK가 만료 임박 시에만 실제로 네트워크 재발급을 하므로 저렴하다.
+    const token = await firebaseUser.getIdToken();
     const res = await fetch("/api/schools/sync-public-data-chunk", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -75,7 +79,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
   }
 
   /** 시/도 하나에 대한 전체 작업(레벨×시군구)을 처리하고 누계에 더한다 */
-  async function runOneSido(thisSidoCode: string, thisSidoName: string, token: string, totals: Totals, overallDoneRef: { done: number; total: number }) {
+  async function runOneSido(thisSidoCode: string, thisSidoName: string, totals: Totals, overallDoneRef: { done: number; total: number }) {
     const districts = SIGUNGU_CODES.filter((s) => s.sidoCode === thisSidoCode && s.sggCode !== "00000");
     const tasks: { levelCode: string; sggCode: string }[] = [];
     for (const levelCode of levels) {
@@ -92,7 +96,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
           for (const delay of attempts) {
             if (delay > 0) await new Promise((r) => setTimeout(r, delay));
             try {
-              return await callChunk(t.levelCode, t.sggCode, thisSidoCode, thisSidoName, token);
+              return await callChunk(t.levelCode, t.sggCode, thisSidoCode, thisSidoName);
             } catch (e: any) {
               lastErr = e;
             }
@@ -140,10 +144,9 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     const totals: Totals = { matched: 0, matchedByName: 0, unmatched: 0, rowCount: 0, failedChunks: 0, unmatchedSample: [] };
 
     try {
-      const token = await firebaseUser.getIdToken();
       for (const [code, name] of targetSidos) {
         setCurrentSidoLabel(name);
-        await runOneSido(code, name, token, totals, overallDoneRef);
+        await runOneSido(code, name, totals, overallDoneRef);
       }
       setResult(totals);
       setCurrentSidoLabel(null);
