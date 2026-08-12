@@ -136,12 +136,16 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
             <MapPin size={14} /> 구글지도 열기
           </button>
         </a>
-        <button className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-surface-muted">
-          <FileDown size={14} /> 브로슈어 다운로드
-        </button>
-        <button className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-surface-muted">
-          <FileDown size={14} /> 제안서 다운로드
-        </button>
+        <a href="/brochure.pdf" download>
+          <button className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-surface-muted">
+            <FileDown size={14} /> 브로슈어 다운로드
+          </button>
+        </a>
+        <a href={`/schools/${school.id}/proposal`} target="_blank" rel="noreferrer">
+          <button className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-surface-muted">
+            <FileDown size={14} /> 제안서 다운로드
+          </button>
+        </a>
       </div>
 
       {(school.financeRevenueTotal != null || school.developmentFundTotal != null || school.teacherCount != null) && (
