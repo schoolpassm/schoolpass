@@ -55,9 +55,22 @@ export async function POST(req: NextRequest) {
 
   const db = getAdminDb();
   try {
-    const rows = await fetchSchoolinfoRows(category, year, levelCode, sggCode, sidoCode);
-    const r = await applySchoolinfoRows(db, category, rows, regionHint);
-    return NextResponse.json({ ok: true, ...r, rowCount: rows.length });
+    // Vercel Hobby 플랜은 함수를 대략 10초에서 강제 종료시키고, 그 경우 JSON이 아닌
+    // 플랫폼 에러 페이지를 그대로 돌려줘서 "Unexpected token" 파싱 에러로 이어진다.
+    // fetchSchoolinfoRows 자체 8초 타임아웃만으로는 그 뒤의 Firestore 매칭·저장 시간까지
+    // 커버하지 못하므로, 라우트 전체에 9초 상한을 걸어 그 안에서 항상 깔끔한 JSON으로 답한다.
+    const work = (async () => {
+      const rows = await fetchSchoolinfoRows(category, year, levelCode, sggCode, sidoCode);
+      const r = await applySchoolinfoRows(db, category, rows, regionHint);
+      return { ok: true, ...r, rowCount: rows.length };
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("이 시군구 처리가 9초를 넘겨 건너뜁니다. 재시도하면 될 수 있습니다.")), 9000)
+    );
+
+    const result = await Promise.race([work, timeoutPromise]);
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
