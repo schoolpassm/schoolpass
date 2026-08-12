@@ -22,6 +22,8 @@ export interface SchoolListFilters {
   level?: SchoolLevel;
   /** 이름 접두어 검색 (Firestore 특성상 완전한 전문검색은 아니며, 이름이 이 값으로 "시작하는" 학교만 매칭됨) */
   namePrefix?: string;
+  /** true면 가나다순(name 오름차순), false/미지정이면 최근 업데이트순 */
+  sortByName?: boolean;
 }
 
 const PAGE_SIZE = 50;
@@ -40,9 +42,12 @@ async function fetchSchoolsPage(filters: SchoolListFilters, cursor: QueryDocumen
   if (filters.grade) constraints.push(where("grade", "==", filters.grade));
 
   if (filters.namePrefix) {
-    // 이름 접두어 범위 검색 (Firestore range query 트릭)
+    // 이름 접두어 범위 검색 (Firestore range query 트릭) — 이 경우 name으로 정렬은 항상 필수
     constraints.push(where("name", ">=", filters.namePrefix));
     constraints.push(where("name", "<=", filters.namePrefix + "\uf8ff"));
+    constraints.push(orderBy("name"));
+  } else if (filters.sortByName) {
+    // 가나다순 정렬 (검색어 없이 전체를 이름순으로)
     constraints.push(orderBy("name"));
   } else {
     constraints.push(orderBy("updatedAt", "desc"));

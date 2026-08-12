@@ -44,6 +44,7 @@ function SchoolsPageInner() {
   const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [namePrefix, setNamePrefix] = useState("");
+  const [sortByName, setSortByName] = useState(false);
   // 대시보드 통계카드 클릭 등으로 ?status=계약 형태 URL을 넘어오면 그 값으로 초기 필터를 맞춘다.
   const [regionFilter, setRegionFilter] = useState<string | undefined>(searchParams.get("region") || undefined);
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | undefined>(
@@ -66,8 +67,9 @@ function SchoolsPageInner() {
       grade: gradeFilter,
       level: levelFilter,
       namePrefix: namePrefix || undefined,
+      sortByName,
     }),
-    [regionFilter, statusFilter, gradeFilter, levelFilter, namePrefix]
+    [regionFilter, statusFilter, gradeFilter, levelFilter, namePrefix, sortByName]
   );
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSchoolsPaginated(filters);
@@ -126,7 +128,13 @@ function SchoolsPageInner() {
     <AppShell title="학교관리">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={handleSearchSubmit} className="relative w-full sm:w-72">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
+          <button
+            type="submit"
+            aria-label="검색"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-ink-300 hover:bg-surface-muted hover:text-primary-600"
+          >
+            <Search size={16} />
+          </button>
           <input
             value={keywordInput}
             onChange={(e) => setKeywordInput(e.target.value)}
@@ -215,6 +223,28 @@ function SchoolsPageInner() {
           {" · "}
           {schools.length}개 불러옴 {isLoading && "· 불러오는 중..."}
         </span>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-ink-500">정렬:</span>
+          <button
+            onClick={() => setSortByName(false)}
+            disabled={!!namePrefix}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              !sortByName ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
+            } disabled:opacity-40`}
+          >
+            최근 업데이트순
+          </button>
+          <button
+            onClick={() => setSortByName(true)}
+            disabled={!!namePrefix}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              sortByName ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
+            } disabled:opacity-40`}
+          >
+            가나다순
+          </button>
+          {namePrefix && <span className="text-[11px] text-ink-300">(검색 중엔 항상 가나다순)</span>}
+        </div>
         {selectedIds.size > 0 && (
           <Button variant="secondary" size="sm" onClick={handleVisitRoute}>
             <Route size={14} /> 선택 {selectedIds.size}곳 방문동선 생성

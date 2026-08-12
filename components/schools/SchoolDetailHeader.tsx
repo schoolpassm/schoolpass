@@ -7,6 +7,7 @@ import { StatusBadge, GradeBadge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { toTel, toSms, toMailto, toGoogleMaps } from "@/lib/utils";
+import { formatKRW } from "@/lib/commission";
 import { Select } from "@/components/ui/Input";
 import { updateSchoolStatus } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
@@ -142,6 +143,34 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
           <FileDown size={14} /> 제안서 다운로드
         </button>
       </div>
+
+      {(school.financeRevenueTotal != null || school.developmentFundTotal != null || school.teacherCount != null) && (
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-surface-border pt-4 sm:grid-cols-3">
+          {school.financeRevenueTotal != null && (
+            <div className="rounded-lg bg-surface-muted p-3">
+              <p className="text-[11px] text-ink-500">학교회계 세입 규모</p>
+              <p className="text-sm font-bold text-ink-900">{formatKRW(school.financeRevenueTotal)}</p>
+            </div>
+          )}
+          {school.developmentFundTotal != null && (
+            <div className="rounded-lg bg-surface-muted p-3">
+              <p className="text-[11px] text-ink-500">학교발전기금</p>
+              <p className="text-sm font-bold text-ink-900">{formatKRW(school.developmentFundTotal)}</p>
+            </div>
+          )}
+          {school.teacherCount != null && (
+            <div className="rounded-lg bg-surface-muted p-3">
+              <p className="text-[11px] text-ink-500">교직원수</p>
+              <p className="text-sm font-bold text-ink-900">{school.teacherCount}명</p>
+            </div>
+          )}
+        </div>
+      )}
+      {school.financeRevenueTotal == null && school.developmentFundTotal == null && (
+        <p className="mt-3 border-t border-surface-border pt-3 text-[11px] text-ink-300">
+          예산·발전기금 정보 없음 — 학교관리 → "공공데이터 동기화"에서 "학교회계"/"학교발전기금" 카테고리를 돌리면 채워집니다.
+        </p>
+      )}
 
       <SchoolFormModal open={editOpen} onClose={() => setEditOpen(false)} school={school} />
     </Card>
