@@ -41,8 +41,14 @@ const VALID_ACTIONS: AiAction[] = [
 ];
 
 /**
- * 실제 데이터를 조회해 "실제 확인된 근거"와 "인근/유사 구축학교" 목록을 계산한다.
- * AI는 여기서 계산된 사실만 근거로 사용하도록 프롬프트에서 강제한다 (환각 방지).
+ * 실제 데이터를 조회해 "실제 확인된 근거"와 "인근/유사 구축학교" 목록, 그리고
+ * 가중치 기반 계약가능성 점수를 계산한다.
+ *
+ * 이전 방식: AI에게 근거 목록을 주고 "몇 점일지 알아서 판단해줘"라고 시켰음 → 매번 조금씩
+ * 다르게 나오고, 근거와 점수 사이 정합성을 보장할 수 없었음.
+ * 이번 방식: 점수는 아래 고정된 가중치 표로 코드가 직접 계산하고(항상 같은 입력 → 항상 같은 점수),
+ * AI는 "왜 이 점수인지" 설명만 담당한다. 정확도와 일관성이 훨씬 높아진다.
+ *
  * 모든 쿼리는 schools_summary에 bounded(limit)로만 접근해 전체 스캔을 피한다.
  * (2개의 독립 쿼리를 Promise.all로 병렬 실행해 응답시간을 단축한다 — Vercel Hobby 플랜의
  *  짧은 함수 실행시간 제한 안에 들어오도록 하기 위한 최적화)
@@ -53,6 +59,7 @@ async function computeFactorsAndNeighbors(
 ) {
   const computedFactors: { label: string; positive: boolean }[] = [];
   const installedNeighbors: InstalledNeighbor[] = [];
+  let points = 50; // 기준점 (중립) — 아래 항목마다 가중치를 더하거나 뺀다
 
   const [countResult, neighborResult] = await Promise.allSettled([
     db.collection("schools_summary").where("region", "==", school.region).where("status", "==", "설치완료").count().get(),
@@ -63,36 +70,52 @@ async function computeFactorsAndNeighbors(
     const installedInRegionCount = countResult.value.data().count;
     if (installedInRegionCount > 0) {
       computedFactors.push({ label: `같은 지역(${school.region}) 구축학교 ${installedInRegionCount}곳`, positive: true });
+      points += Math.min(10, installedInRegionCount); // 최대 +10 (레퍼런스 효과)
     }
   }
 
-  // 2) 학생수 규모 (전체 평균과 비교할 근거 데이터가 없으므로, 절대적 기준으로 판단)
-  if (typeof school.studentCount === "number") {
-    if (school.studentCount >= 800) {
+  // 학생수 규모 (절대적 기준 — 전체 평균 데이터가 없어 상대비교는 하지 않음)
+  if (typeof school.studentCount === "number" && school.studentCount > 0) {
+    if (school.studentCount >= 1000) {
+      computedFactors.push({ label: `학생수 ${school.studentCount}명으로 규모가 매우 큼`, positive: true });
+      points += 15;
+    } else if (school.studentCount >= 800) {
       computedFactors.push({ label: `학생수 ${school.studentCount}명으로 규모가 큼`, positive: true });
-    } else if (school.studentCount > 0 && school.studentCount < 200) {
+      points += 10;
+    } else if (school.studentCount < 200) {
       computedFactors.push({ label: `학생수 ${school.studentCount}명으로 소규모`, positive: false });
+      points -= 10;
     }
   }
 
-  if (typeof school.classCount === "number" && school.classCount >= 30) {
-    computedFactors.push({ label: `학급수 ${school.classCount}개로 많음`, positive: true });
+  if (typeof school.classCount === "number") {
+    if (school.classCount >= 30) {
+      computedFactors.push({ label: `학급수 ${school.classCount}개로 많음`, positive: true });
+      points += 8;
+    } else if (school.classCount >= 20) {
+      points += 4;
+    }
   }
 
   if (typeof school.teacherCount === "number" && school.teacherCount > 0) {
-    computedFactors.push({ label: `교직원 ${school.teacherCount}명`, positive: school.teacherCount >= 50 });
+    const big = school.teacherCount >= 50;
+    computedFactors.push({ label: `교직원 ${school.teacherCount}명`, positive: big });
+    points += big ? 5 : school.teacherCount >= 30 ? 3 : 0;
   }
 
   if (typeof school.financeRevenueTotal === "number" && school.financeRevenueTotal > 0) {
     const eok = school.financeRevenueTotal / 100000000;
+    const add = Math.min(15, Math.round(eok * 1.5)); // 세입 규모에 비례, 최대 +15
     if (eok >= 5) {
       computedFactors.push({ label: `학교회계 세입 규모 약 ${eok.toFixed(1)}억원으로 큼`, positive: true });
     }
+    points += add;
   }
 
   if (typeof school.developmentFundTotal === "number" && school.developmentFundTotal > 0) {
     const man = Math.round(school.developmentFundTotal / 10000);
     computedFactors.push({ label: `학교발전기금 약 ${man.toLocaleString()}만원 보유`, positive: true });
+    points += 5;
   }
 
   if (school.supportFacilities) {
@@ -100,35 +123,49 @@ async function computeFactorsAndNeighbors(
     const count = [f.gym, f.auditorium, f.pool, f.careerRoom].filter((v: number) => v > 0).length;
     if (count >= 2) {
       computedFactors.push({ label: `학생지원시설 우수 (체육관·강당·수영장·상담실 중 ${count}종 보유)`, positive: true });
+      points += 8;
+    } else if (count === 1) {
+      points += 4;
     }
   }
 
   if (school.facilitySafetyOk === true) {
     computedFactors.push({ label: "시설안전 점검 완료 (이상없음)", positive: true });
+    points += 6;
   } else if (school.facilitySafetyOk === false) {
     computedFactors.push({ label: "시설안전 점검 결과 관리 필요", positive: false });
+    points -= 8;
   }
 
   if (school.isNewlyOpened) {
     computedFactors.push({ label: "신설 학교 (예산 편성 초기 접근 유리)", positive: true });
+    points += 10;
   }
   if (school.hasKindergarten) {
     computedFactors.push({ label: "병설유치원 운영 중 (출입관리 필요성 높음)", positive: true });
+    points += 6;
   }
 
-  // 3) 최근 접촉 경과일
+  // 최근 접촉 경과일
   let daysSinceLastContact: number | null = null;
   if (school.lastContactedAt) {
     const last = school.lastContactedAt.toDate ? school.lastContactedAt.toDate() : new Date(school.lastContactedAt);
     daysSinceLastContact = Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysSinceLastContact >= 30) {
+    if (daysSinceLastContact >= 60) {
+      computedFactors.push({ label: `최근 ${daysSinceLastContact}일간 미접촉 (장기 방치)`, positive: false });
+      points -= 15;
+    } else if (daysSinceLastContact >= 30) {
       computedFactors.push({ label: `최근 ${daysSinceLastContact}일간 미접촉`, positive: false });
+      points -= 10;
+    } else if (daysSinceLastContact >= 14) {
+      points -= 3;
     }
   } else {
     computedFactors.push({ label: "접촉 이력 없음 (첫 접근 필요)", positive: false });
+    points -= 12;
   }
 
-  // 4) 인근/유사 구축학교 후보 (위에서 병렬로 이미 받아온 결과 사용)
+  // 인근/유사 구축학교 후보 (위에서 병렬로 이미 받아온 결과 사용)
   if (neighborResult.status === "fulfilled") {
     const candidates = neighborResult.value.docs
       .filter((d) => d.id !== school.id)
@@ -159,15 +196,17 @@ async function computeFactorsAndNeighbors(
     });
 
     installedNeighbors.push(...candidates.slice(0, 5));
-    if (candidates.some((c) => c.distanceKm != null)) {
-      const nearest = candidates.find((c) => c.distanceKm != null);
-      if (nearest?.distanceKm != null) {
-        computedFactors.push({ label: `가장 가까운 구축학교 ${nearest.name} (${nearest.distanceKm.toFixed(1)}km)`, positive: true });
-      }
+    const nearest = candidates.find((c) => c.distanceKm != null);
+    if (nearest?.distanceKm != null) {
+      computedFactors.push({ label: `가장 가까운 구축학교 ${nearest.name} (${nearest.distanceKm.toFixed(1)}km)`, positive: true });
+      if (nearest.distanceKm <= 3) points += 8;
+      else if (nearest.distanceKm <= 10) points += 4;
     }
+    if (nearest?.sameEduOffice) points += 5;
   }
 
-  return { computedFactors, installedNeighbors, daysSinceLastContact };
+  const weightedScore = Math.max(5, Math.min(98, Math.round(points)));
+  return { computedFactors, installedNeighbors, daysSinceLastContact, weightedScore };
 }
 
 export async function POST(req: NextRequest) {
@@ -208,7 +247,7 @@ export async function POST(req: NextRequest) {
     const nearbyCaseSummaries = casesSnap.docs.map(
       (d) => `${d.get("schoolName")} (${d.get("installYear")}년 설치) - ${d.get("review") || "후기 없음"}`
     );
-    const { computedFactors, installedNeighbors, daysSinceLastContact } = factorsResult;
+    const { computedFactors, installedNeighbors, daysSinceLastContact, weightedScore } = factorsResult;
 
     const ctx: SchoolContext = {
       name: school.name,
@@ -228,6 +267,7 @@ export async function POST(req: NextRequest) {
       nearbyCaseSummaries,
       installedNeighbors,
       computedFactors,
+      weightedScore: action === "score" ? weightedScore : undefined,
     };
 
     const { system, prompt, maxTokens } = buildPrompt(action, ctx);
@@ -238,10 +278,11 @@ export async function POST(req: NextRequest) {
     let expectedContractAmount: number | null = null;
     let recommendedVisitWindow: string | null = null;
     if (action === "score") {
-      const match = text.match(/점수[:\s]*([0-9]{1,3})/);
-      if (match) scoreValue = Math.min(100, parseInt(match[1], 10));
+      // 점수는 더 이상 AI 텍스트에서 정규식으로 추출하지 않는다 — 위에서 계산한 가중치 점수를
+      // 그대로 신뢰값으로 사용해 일관성을 보장하고, AI 텍스트는 "왜 이 점수인지" 설명 역할만 한다.
+      scoreValue = weightedScore;
 
-      if (scoreValue != null && recentContractsSnap) {
+      if (recentContractsSnap) {
         // 예상 계약금액: 최근 계약 200건의 평균 금액 × 점수 비율 (위에서 이미 병렬로 조회해둔 결과 사용)
         const amounts = recentContractsSnap.docs.map((d) => d.get("contractAmount")).filter((a) => typeof a === "number");
         if (amounts.length > 0) {

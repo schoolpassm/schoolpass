@@ -41,6 +41,8 @@ export interface SchoolContext {
   installedNeighbors: InstalledNeighbor[]; // 실제 쿼리로 찾은 인근/유사 구축학교 (거짓 데이터 절대 생성 금지, 이 목록만 근거로 사용)
   /** 서버에서 실제 데이터로 미리 계산해둔 가점/감점 요인. AI는 이 목록에 없는 근거를 지어내면 안 된다. */
   computedFactors: { label: string; positive: boolean }[];
+  /** score 액션 전용: 코드가 고정 가중치 표로 미리 계산해둔 최종 점수(0~100). AI는 이 숫자를 그대로 설명만 하고 다른 숫자를 새로 만들면 안 된다. */
+  weightedScore?: number;
 }
 
 /** 각 액션별로 어떤 모델을 쓸지 결정 (품질이 중요한 문서만 상위 모델) */
@@ -156,10 +158,11 @@ export function buildPrompt(action: AiAction, ctx: SchoolContext): { system: str
       return {
         system: SYSTEM_PROMPT,
         maxTokens: 500,
-        prompt: `${base}\n\n위 [실제 확인된 근거] 목록만 사용해서 이 학교의 계약 성사 가능성을 0~100점으로 평가해줘.
-근거 목록에 없는 이유는 절대 만들어내지 마세요. 근거가 부족하면 점수를 보수적으로 낮게 매기세요.
-반드시 아래 형식을 정확히 지켜서 답변:
-점수: [숫자]
+        prompt: `${base}\n\n이 학교의 계약 성사 가능성 점수는 이미 ${ctx.weightedScore}점(고정된 가중치 계산식으로 산출됨)으로 확정되어 있습니다.
+당신의 역할은 이 숫자를 다시 판단하는 것이 아니라, 왜 이 점수가 나왔는지를 위 [실제 확인된 근거] 목록만 사용해서 설명하는 것입니다.
+근거 목록에 없는 이유는 절대 만들어내지 마세요.
+반드시 아래 형식을 정확히 지켜서 답변 (점수 숫자는 반드시 ${ctx.weightedScore}으로 그대로 쓸 것):
+점수: ${ctx.weightedScore}
 근거:
 - [근거1, 반드시 위 목록에서 인용]
 - [근거2]
