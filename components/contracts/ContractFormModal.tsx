@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { createContract } from "@/lib/api/contracts";
-import { calculateCommission, formatKRW } from "@/lib/commission";
+import { createContract, getCumulativeUnitsSold } from "@/lib/api/contracts";
+import { calculateCommission, formatKRW, PRODUCT_LABEL, PRODUCT_UNIT_PRICE } from "@/lib/commission";
 import { useAuth } from "@/lib/auth-context";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { PartnerDoc, CommissionZone } from "@/types";
+import { PartnerDoc, SchoolPassProduct, CommissionCalcMethod } from "@/types";
 import { Timestamp } from "firebase/firestore";
 import { SchoolPickerInput } from "@/components/schools/SchoolPickerInput";
 
@@ -18,18 +18,52 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
   const [saving, setSaving] = useState(false);
 
   const [selectedSchool, setSelectedSchool] = useState<{ id: string; name: string; region: string } | null>(null);
-  const [contractAmount, setContractAmount] = useState("");
+  const [product, setProduct] = useState<SchoolPassProduct>("school_pass");
+  const [calcMethod, setCalcMethod] = useState<CommissionCalcMethod>("unit");
+  const [unitCount, setUnitCount] = useState("1");
+  const [dealAmount, setDealAmount] = useState("");
   const [installAmount, setInstallAmount] = useState("");
   const [installDate, setInstallDate] = useState("");
   const [contractDate, setContractDate] = useState(new Date().toISOString().slice(0, 10));
-  const [zone, setZone] = useState<CommissionZone>("공동권역");
   const [partnerId, setPartnerId] = useState("");
+  const [cumulativeUnits, setCumulativeUnits] = useState(0);
+  const [loadingCumulative, setLoadingCumulative] = useState(false);
 
   const selectedPartner = partners.find((p) => p.id === partnerId);
-  const amountNum = Number(contractAmount) || 0;
   const schoolId = selectedSchool?.id ?? "";
 
-  const preview = useMemo(() => calculateCommission(amountNum, zone), [amountNum, zone]);
+  useEffect(() => {
+    if (calcMethod !== "unit") return;
+    let cancelled = false;
+    setLoadingCumulative(true);
+    getCumulativeUnitsSold(product)
+      .then((n) => {
+        if (!cancelled) setCumulativeUnits(n);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCumulative(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [product, calcMethod]);
+
+  const contractAmount = useMemo(() => {
+    if (calcMethod === "unit") return (Number(unitCount) || 0) * PRODUCT_UNIT_PRICE[product];
+    return Number(dealAmount) || 0;
+  }, [calcMethod, unitCount, product, dealAmount]);
+
+  const preview = useMemo(
+    () =>
+      calculateCommission({
+        method: calcMethod,
+        product,
+        unitCount: Number(unitCount) || 0,
+        previousCumulativeUnits: cumulativeUnits,
+        dealAmount: contractAmount,
+      }),
+    [calcMethod, product, unitCount, cumulativeUnits, contractAmount]
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +75,7 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
           schoolId,
           schoolName: selectedSchool.name,
           region: selectedSchool.region,
-          contractAmount: amountNum,
+          contractAmount,
           installAmount: Number(installAmount) || 0,
           installDate: installDate ? Timestamp.fromDate(new Date(installDate)) : null,
           contractDate: contractDate ? Timestamp.fromDate(new Date(contractDate)) : null,
@@ -49,7 +83,9 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
           salesOwnerName: userDoc?.name ?? "",
           partnerId: partnerId || undefined,
           partnerName: selectedPartner?.name,
-          zone,
+          product,
+          calcMethod,
+          unitCount: calcMethod === "unit" ? Number(unitCount) || 0 : undefined,
           settlementStatus: "정산대기",
         },
         firebaseUser.uid
@@ -77,8 +113,35 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
               ))}
             </Select>
           </Field>
-          <Field label="계약금액">
-            <Input type="number" required value={contractAmount} onChange={(e) => setContractAmount(e.target.value)} placeholder="예: 20000000" />
+          <Field label="제품">
+            <Select value={product} onChange={(e) => setProduct(e.target.value as SchoolPassProduct)}>
+              <option value="school_pass">
+                {PRODUCT_LABEL.school_pass} ({formatKRW(PRODUCT_UNIT_PRICE.school_pass)}/대)
+              </option>
+              <option value="zero_pass">
+                {PRODUCT_LABEL.zero_pass} ({formatKRW(PRODUCT_UNIT_PRICE.zero_pass)}/대)
+              </option>
+            </Select>
+          </Field>
+          <Field label="수수료 산정 방식">
+            <Select value={calcMethod} onChange={(e) => setCalcMethod(e.target.value as CommissionCalcMethod)}>
+              <option value="unit">단위 수량 판매 (누적 집계 — 1~10대 20%, 11대~ 25%)</option>
+              <option value="project">사업 예산 방식 (건별 — 25~36%, 대형사업용)</option>
+            </Select>
+          </Field>
+
+          {calcMethod === "unit" ? (
+            <Field label={`판매 대수 (${PRODUCT_LABEL[product]} 누적 ${loadingCumulative ? "확인 중..." : `${cumulativeUnits}대`} 이후)`}>
+              <Input type="number" min={1} required value={unitCount} onChange={(e) => setUnitCount(e.target.value)} />
+            </Field>
+          ) : (
+            <Field label="사업 총 금액 (부가세 포함)">
+              <Input type="number" required value={dealAmount} onChange={(e) => setDealAmount(e.target.value)} placeholder="예: 1200000000" />
+            </Field>
+          )}
+
+          <Field label="계약금액 (자동계산)">
+            <Input value={formatKRW(contractAmount)} disabled />
           </Field>
           <Field label="설치금액">
             <Input type="number" value={installAmount} onChange={(e) => setInstallAmount(e.target.value)} />
@@ -89,25 +152,30 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
           <Field label="설치일">
             <Input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
           </Field>
-          <Field label="권역 (수수료 배분 기준)">
-            <Select value={zone} onChange={(e) => setZone(e.target.value as CommissionZone)}>
-              <option value="공동권역">공동권역</option>
-              <option value="신규권역">신규권역</option>
-              <option value="사촌권역">사촌권역</option>
-            </Select>
-          </Field>
         </div>
 
         <div className="rounded-lg border border-primary-100 bg-primary-50/50 p-4">
-          <p className="mb-2 text-xs font-semibold text-primary-700">수익 자동계산 (기본수수료 35%)</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <PreviewItem label="본인" value={preview.self} sub={`${(preview.selfRate * 100).toFixed(0)}%`} />
-            <PreviewItem label="사촌" value={preview.cousin} sub={`${(preview.cousinRate * 100).toFixed(0)}%`} />
-            <PreviewItem label="영업" value={preview.sales} sub={`${(preview.salesRate * 100).toFixed(0)}%`} />
-            <PreviewItem label="운영비" value={preview.operation} sub={`${(preview.operationRate * 100).toFixed(0)}%`} />
-          </div>
+          <p className="mb-2 text-xs font-semibold text-primary-700">수익 자동계산 (공식 수수료 규정 2026.07)</p>
+          {calcMethod === "unit" && preview.tierBreakdown && (
+            <div className="grid grid-cols-2 gap-2">
+              {preview.tierBreakdown.map((t, i) => (
+                <div key={i} className="rounded-md bg-white p-2 text-center shadow-card">
+                  <p className="text-[11px] text-ink-500">
+                    {t.units}대 · {(t.rate * 100).toFixed(0)}%
+                  </p>
+                  <p className="text-sm font-bold text-ink-900">{formatKRW(t.amount)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {calcMethod === "project" && (
+            <div className="rounded-md bg-white p-2 text-center shadow-card">
+              <p className="text-[11px] text-ink-500">적용 요율 {((preview.appliedRate ?? 0) * 100).toFixed(0)}%</p>
+              <p className="text-sm font-bold text-ink-900">{formatKRW(preview.totalCommission)}</p>
+            </div>
+          )}
           <p className="mt-2 text-right text-xs text-primary-700">
-            기본수수료 합계 <span className="font-bold">{formatKRW(preview.baseCommission)}</span>
+            총 수수료 <span className="font-bold">{formatKRW(preview.totalCommission)}</span>
           </p>
         </div>
 
@@ -121,14 +189,5 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
         </div>
       </form>
     </Modal>
-  );
-}
-
-function PreviewItem({ label, value, sub }: { label: string; value: number; sub: string }) {
-  return (
-    <div className="rounded-md bg-white p-2 text-center shadow-card">
-      <p className="text-[11px] text-ink-500">{label} ({sub})</p>
-      <p className="text-sm font-bold text-ink-900">{formatKRW(value)}</p>
-    </div>
   );
 }

@@ -15,7 +15,7 @@ export default function StatsPage() {
   const { data: partners } = useCollection<PartnerDoc>("partners");
 
   const totalRevenue = contracts.reduce((sum, c) => sum + (c.contractAmount ?? 0), 0);
-  const totalCommission = contracts.reduce((sum, c) => sum + (c.commission?.baseCommission ?? 0), 0);
+  const totalCommission = contracts.reduce((sum, c) => sum + (c.commission?.totalCommission ?? 0), 0);
 
   const byRegion = useMemo(() => {
     const map: Record<string, number> = {};

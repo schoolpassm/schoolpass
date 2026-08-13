@@ -219,7 +219,7 @@ export interface EduOfficeEventDoc extends BaseDoc {
 export interface PartnerDoc extends BaseDoc {
   name: string;
   region: string;
-  zone: "공동권역" | "신규권역" | "사촌권역"; // 수수료 계산 기준 권역 타입
+  zone: "공동권역" | "신규권역" | "사촌권역"; // 파트너 담당권역 라벨 (2026.07부터 수수료 계산에는 더 이상 쓰이지 않음, lib/commission.ts 참고)
   phone?: string;
   email?: string;
   referralCount: number; // 소개건수 (집계값, contracts 생성/삭제 시 갱신)
@@ -248,21 +248,22 @@ export interface CaseDoc extends BaseDoc {
 // 6. contracts (계약관리) — 수익 자동계산의 기준 문서
 // ----------------------------------------------------------------------------
 export type SettlementStatus = "정산대기" | "정산중" | "정산완료";
+/** @deprecated 실제 수수료 규정(2026.07)으로 교체되어 더 이상 수수료 계산에 쓰이지 않음. 파트너 담당권역 표시용으로만 남겨둠. */
 export type CommissionZone = "공동권역" | "신규권역" | "사촌권역";
 
-/** 계약금액 기준 수수료 자동계산 결과 (lib/commission.ts 참고) */
+export type SchoolPassProduct = "zero_pass" | "school_pass";
+/** 방식1: 단위 수량 판매(누적 집계) / 방식2: 사업 예산 방식(건별, 비누적) */
+export type CommissionCalcMethod = "unit" | "project";
+
+/** 계약금액 기준 수수료 자동계산 결과 (lib/commission.ts 참고, 2026.07 공식 수수료 규정 기준) */
 export interface CommissionBreakdown {
-  baseRate: number; // 기본수수료율 (0.35 고정)
-  baseCommission: number; // 계약금액 * baseRate
-  zone: CommissionZone;
-  self: number; // 본인 배분액
-  cousin: number; // 사촌 배분액
-  sales: number; // 영업 배분액
-  operation: number; // 운영비 배분액
-  selfRate: number;
-  cousinRate: number;
-  salesRate: number;
-  operationRate: number;
+  method: CommissionCalcMethod;
+  product: SchoolPassProduct;
+  unitCount?: number; // method가 "unit"일 때만 사용
+  dealAmount: number; // 이 계약의 총 금액(부가세 포함 기준)
+  tierBreakdown?: { units: number; rate: number; amount: number }[]; // unit 방식일 때 구간별 내역
+  appliedRate?: number; // project 방식일 때 적용된 단일 요율
+  totalCommission: number; // 최종 수수료 합계
 }
 
 export interface ContractDoc extends BaseDoc {
@@ -277,7 +278,9 @@ export interface ContractDoc extends BaseDoc {
   salesOwnerName: string;
   partnerId?: string; // 지역파트너
   partnerName?: string;
-  zone: CommissionZone;
+  product: SchoolPassProduct;
+  calcMethod: CommissionCalcMethod;
+  unitCount?: number; // calcMethod가 "unit"일 때 판매 대수
   commission: CommissionBreakdown; // 자동계산 스냅샷 (계약금액 변경 시 재계산 후 저장)
   settlementStatus: SettlementStatus;
   note?: string;

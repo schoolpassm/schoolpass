@@ -22,7 +22,7 @@ export default function ContractsPage() {
     return contracts.reduce(
       (acc, c) => {
         acc.amount += c.contractAmount ?? 0;
-        acc.commission += c.commission?.baseCommission ?? 0;
+        acc.commission += c.commission?.totalCommission ?? 0;
         return acc;
       },
       { amount: 0, commission: 0 }
