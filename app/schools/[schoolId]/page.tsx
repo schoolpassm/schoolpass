@@ -32,7 +32,7 @@ export default function SchoolDetailPage({ params }: { params: { schoolId: strin
             <CardBody>
               <Tabs
                 tabs={[
-                  { key: "activity", label: "활동기록 (전화·이메일·문자·방문)", content: <ActivityTimeline schoolId={school.id} /> },
+                  { key: "activity", label: "활동기록 (전화·이메일·문자·방문)", content: <ActivityTimeline schoolId={school.id} currentStatus={school.status} /> },
                   { key: "quotes", label: "견적", content: <QuotesTab schoolId={school.id} /> },
                   { key: "files", label: "첨부파일 (브로슈어·사진)", content: <FilesTab schoolId={school.id} /> },
                   { key: "note", label: "메모", content: <p className="whitespace-pre-wrap text-sm text-ink-700">{school.note || "메모가 없습니다."}</p> },

@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Phone, Mail, MessageSquare, MapPin, StickyNote, RefreshCw } from "lucide-react";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { orderBy } from "firebase/firestore";
-import { ActivityType, SchoolActivityDoc } from "@/types";
+import { ActivityType, SchoolActivityDoc, SchoolStatus, PIPELINE_STAGE_LABELS } from "@/types";
 import { addSchoolActivity } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/Button";
 import { formatDate, cn } from "@/lib/utils";
+
+// 칸반보드 컬럼과 완전히 동일한 상태 목록(보류·실패 포함) — 여기서 고르면 칸반에도 그대로 반영됨
+const ALL_STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
 
 const TYPE_META: Record<ActivityType, { label: string; icon: any; color: string }> = {
   call: { label: "전화", icon: Phone, color: "text-primary-600 bg-primary-50" },
@@ -28,7 +31,7 @@ const FILTERS: { key: ActivityType | "all"; label: string }[] = [
   { key: "memo", label: "메모" },
 ];
 
-export function ActivityTimeline({ schoolId }: { schoolId: string }) {
+export function ActivityTimeline({ schoolId, currentStatus }: { schoolId: string; currentStatus: SchoolStatus }) {
   const { data: activities, loading } = useCollection<SchoolActivityDoc>(`schools_detail/${schoolId}/activities`, [
     orderBy("createdAt", "desc"),
   ]);
@@ -36,7 +39,13 @@ export function ActivityTimeline({ schoolId }: { schoolId: string }) {
   const [filter, setFilter] = useState<ActivityType | "all">("all");
   const [type, setType] = useState<ActivityType>("call");
   const [summary, setSummary] = useState("");
+  const [nextStatus, setNextStatus] = useState<SchoolStatus>(currentStatus);
   const [saving, setSaving] = useState(false);
+
+  // 학교 상태가 (이 화면 밖에서, 예: 칸반 드래그로) 바뀌면 선택창 기본값도 최신 상태로 따라간다
+  useEffect(() => {
+    setNextStatus(currentStatus);
+  }, [currentStatus]);
 
   const filtered = filter === "all" ? activities : activities.filter((a) => a.type === filter);
 
@@ -44,12 +53,18 @@ export function ActivityTimeline({ schoolId }: { schoolId: string }) {
     if (!summary.trim() || !firebaseUser) return;
     setSaving(true);
     try {
-      await addSchoolActivity(schoolId, {
-        type,
-        summary: summary.trim(),
-        authorUid: firebaseUser.uid,
-        authorName: userDoc?.name ?? "",
-      });
+      // 상태를 바꿨을 때만 넘긴다 — 그대로면 굳이 상태 변경 이력을 남기지 않음
+      const statusToApply = nextStatus !== currentStatus ? nextStatus : undefined;
+      await addSchoolActivity(
+        schoolId,
+        {
+          type,
+          summary: summary.trim(),
+          authorUid: firebaseUser.uid,
+          authorName: userDoc?.name ?? "",
+        },
+        statusToApply
+      );
       setSummary("");
     } finally {
       setSaving(false);
@@ -73,28 +88,53 @@ export function ActivityTimeline({ schoolId }: { schoolId: string }) {
         ))}
       </div>
 
-      <div className="mb-4 flex gap-2 rounded-lg border border-surface-border bg-surface-muted p-3">
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as ActivityType)}
-          className="h-9 rounded-lg border border-surface-border bg-white px-2 text-xs"
-        >
-          <option value="call">전화</option>
-          <option value="email">이메일</option>
-          <option value="sms">문자</option>
-          <option value="visit">방문</option>
-          <option value="memo">메모</option>
-        </select>
-        <input
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          placeholder="활동 내용을 기록하세요 (예: 행정실장 통화, 다음주 방문 약속)"
-          className="h-9 flex-1 rounded-lg border border-surface-border bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary-200"
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-        />
-        <Button size="sm" onClick={handleAdd} disabled={saving}>
-          기록
-        </Button>
+      <div className="mb-4 space-y-2 rounded-lg border border-surface-border bg-surface-muted p-3">
+        <div className="flex gap-2">
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as ActivityType)}
+            className="h-9 rounded-lg border border-surface-border bg-white px-2 text-xs"
+          >
+            <option value="call">전화</option>
+            <option value="email">이메일</option>
+            <option value="sms">문자</option>
+            <option value="visit">방문</option>
+            <option value="memo">메모</option>
+          </select>
+          <input
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="활동 내용을 기록하세요 (예: 행정실장 통화, 다음주 방문 약속)"
+            className="h-9 flex-1 rounded-lg border border-surface-border bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary-200"
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-surface-border/70 pt-2">
+          <span className="text-[11px] font-medium text-ink-500">칸반 상태 변경:</span>
+          <select
+            value={nextStatus}
+            onChange={(e) => setNextStatus(e.target.value as SchoolStatus)}
+            className={cn(
+              "h-8 rounded-lg border px-2 text-xs font-medium",
+              nextStatus !== currentStatus ? "border-primary-400 bg-primary-50 text-primary-700" : "border-surface-border bg-white text-ink-700"
+            )}
+          >
+            {ALL_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {PIPELINE_STAGE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+          {nextStatus !== currentStatus && (
+            <span className="text-[11px] text-primary-600">
+              현재 "{PIPELINE_STAGE_LABELS[currentStatus]}" → 기록 저장 시 "{PIPELINE_STAGE_LABELS[nextStatus]}"(으)로 칸반 이동
+            </span>
+          )}
+          <Button size="sm" onClick={handleAdd} disabled={saving} className="ml-auto">
+            {saving ? "저장 중..." : "기록"}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">

@@ -111,11 +111,23 @@ export async function updateSchoolStatus(schoolId: string, status: SchoolDoc["st
   return batch.commit();
 }
 
-export async function addSchoolActivity(schoolId: string, activity: Partial<SchoolActivityDoc>) {
+/**
+ * 활동기록(전화/이메일/문자/방문/메모) 추가.
+ * newStatus를 같이 넘기면, 활동기록 저장 + 최근접촉일 갱신 + 칸반 상태(status) 변경까지
+ * 전부 하나의 배치(batch)로 원자적으로 처리한다 — 상세페이지에서 통화 기록하면서
+ * 그 자리에서 칸반 컬럼까지 바로 옮기는 용도.
+ */
+export async function addSchoolActivity(
+  schoolId: string,
+  activity: Partial<SchoolActivityDoc>,
+  newStatus?: SchoolDoc["status"]
+) {
   const batch = writeBatch(db);
   const activityRef = doc(collection(db, DETAIL, schoolId, "activities"));
   batch.set(activityRef, {
     ...activity,
+    // 상태를 같이 바꾼 경우, 타임라인에서 바로 알아볼 수 있게 기록 내용 끝에 남긴다
+    summary: newStatus ? `${activity.summary ?? ""} (→ 상태: ${newStatus})`.trim() : activity.summary,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -123,6 +135,11 @@ export async function addSchoolActivity(schoolId: string, activity: Partial<Scho
   if (activity.type === "call" || activity.type === "email" || activity.type === "sms" || activity.type === "visit") {
     batch.update(doc(db, DETAIL, schoolId), { lastContactedAt: serverTimestamp() });
     batch.set(doc(db, SUMMARY, schoolId), { lastContactedAt: serverTimestamp() }, { merge: true });
+  }
+  // 상태(칸반 컬럼) 변경도 같은 배치에 포함 — 활동기록과 상태변경이 따로 놀지 않도록 원자적으로 처리
+  if (newStatus) {
+    batch.update(doc(db, DETAIL, schoolId), { status: newStatus, updatedAt: serverTimestamp() });
+    batch.set(doc(db, SUMMARY, schoolId), { status: newStatus, updatedAt: serverTimestamp() }, { merge: true });
   }
   await batch.commit();
   return activityRef;
