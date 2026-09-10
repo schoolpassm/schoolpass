@@ -128,6 +128,7 @@ export interface SchoolSummaryDoc {
   contactPhone?: string;
   contactEmail?: string;
   studentCount?: number;
+  ownerUid?: string; // 담당자 uid (칸반보드에서 "내 것만 이동 가능" 권한체크용)
   ownerName?: string;
   partnerId?: string;
   eduOfficeId?: string;
