@@ -32,6 +32,13 @@ export function Topbar({ title }: { title: string }) {
         <button className="rounded-md p-2 text-ink-500 hover:bg-surface-muted">
           <Bell size={18} />
         </button>
+        {/* 로그인한 사람 이름 — 모바일에서도 항상 보이게 (예전엔 hover 툴팁으로만 있어서 폰에서 안 보였음) */}
+        <span className="hidden items-center gap-1.5 rounded-full bg-surface-muted px-3 py-1.5 text-xs font-medium text-ink-700 sm:flex">
+          {userDoc?.name ?? "게스트"}
+        </span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 sm:hidden">
+          {(userDoc?.name ?? "?").slice(0, 1)}
+        </span>
         <button
           onClick={() => signOut()}
           className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-ink-500 hover:bg-surface-muted"
