@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
   updateDoc,
   writeBatch,
@@ -141,6 +142,20 @@ export async function addSchoolActivity(
     batch.update(doc(db, DETAIL, schoolId), { status: newStatus, updatedAt: serverTimestamp() });
     batch.set(doc(db, SUMMARY, schoolId), { status: newStatus, updatedAt: serverTimestamp() }, { merge: true });
   }
+
+  // 담당자 자동 지정: 이 학교에 아직 담당자가 없는 상태에서 누군가 전화/이메일/문자/방문을 기록하면,
+  // 그 사람이 자동으로 담당자가 된다 (이미 담당자가 있으면 건드리지 않음)
+  if (
+    (activity.type === "call" || activity.type === "email" || activity.type === "sms" || activity.type === "visit") &&
+    activity.authorUid
+  ) {
+    const schoolSnap = await getDoc(doc(db, DETAIL, schoolId));
+    if (schoolSnap.exists() && !schoolSnap.data()?.ownerUid) {
+      batch.update(doc(db, DETAIL, schoolId), { ownerUid: activity.authorUid, ownerName: activity.authorName ?? "" });
+      batch.set(doc(db, SUMMARY, schoolId), { ownerName: activity.authorName ?? "" }, { merge: true });
+    }
+  }
+
   await batch.commit();
   return activityRef;
 }
