@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 const NAV = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
@@ -36,6 +37,7 @@ const NAV = [
 
 export function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
+  const { userDoc } = useAuth();
   if (!open) return null;
 
   return (
@@ -47,6 +49,14 @@ export function MobileNav({ open, onClose }: { open: boolean; onClose: () => voi
           <button onClick={onClose} className="p-1 text-ink-500">
             <X size={20} />
           </button>
+        </div>
+        {/* 지금 로그인한 사람 — 모바일 메뉴 열면 바로 보이게 */}
+        <div className="mx-3 mt-3 rounded-lg bg-surface-muted p-3">
+          <p className="text-xs font-semibold text-ink-900">{userDoc?.name ?? "게스트"}</p>
+          <p className="text-[11px] text-ink-500">
+            {userDoc?.role === "admin" ? "관리자" : userDoc?.role === "partner" ? "파트너" : "매니저"}
+            {userDoc?.email && ` · ${userDoc.email}`}
+          </p>
         </div>
         <nav className="flex-1 space-y-0.5 p-3 overflow-y-auto">
           {NAV.map((item) => {
