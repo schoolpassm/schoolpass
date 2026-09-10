@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { createContract, getCumulativeUnitsSold } from "@/lib/api/contracts";
-import { calculateCommission, formatKRW, PRODUCT_LABEL, PRODUCT_UNIT_PRICE } from "@/lib/commission";
+import { formatKRW, PRODUCT_LABEL, PRODUCT_UNIT_PRICE } from "@/lib/commission";
 import { useAuth } from "@/lib/auth-context";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { PartnerDoc, SchoolPassProduct, CommissionCalcMethod } from "@/types";
@@ -53,17 +53,7 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
     return Number(dealAmount) || 0;
   }, [calcMethod, unitCount, product, dealAmount]);
 
-  const preview = useMemo(
-    () =>
-      calculateCommission({
-        method: calcMethod,
-        product,
-        unitCount: Number(unitCount) || 0,
-        previousCumulativeUnits: cumulativeUnits,
-        dealAmount: contractAmount,
-      }),
-    [calcMethod, product, unitCount, cumulativeUnits, contractAmount]
-  );
+  // 수수료 미리보기는 화면에 노출하지 않음(수익 부분 비공개 정책) — 실제 계산·저장은 createContract 내부에서 그대로 수행됨
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -152,31 +142,6 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
           <Field label="설치일">
             <Input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
           </Field>
-        </div>
-
-        <div className="rounded-lg border border-primary-100 bg-primary-50/50 p-4">
-          <p className="mb-2 text-xs font-semibold text-primary-700">수익 자동계산 (공식 수수료 규정 2026.07)</p>
-          {calcMethod === "unit" && preview.tierBreakdown && (
-            <div className="grid grid-cols-2 gap-2">
-              {preview.tierBreakdown.map((t, i) => (
-                <div key={i} className="rounded-md bg-white p-2 text-center shadow-card">
-                  <p className="text-[11px] text-ink-500">
-                    {t.units}대 · {(t.rate * 100).toFixed(0)}%
-                  </p>
-                  <p className="text-sm font-bold text-ink-900">{formatKRW(t.amount)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {calcMethod === "project" && (
-            <div className="rounded-md bg-white p-2 text-center shadow-card">
-              <p className="text-[11px] text-ink-500">적용 요율 {((preview.appliedRate ?? 0) * 100).toFixed(0)}%</p>
-              <p className="text-sm font-bold text-ink-900">{formatKRW(preview.totalCommission)}</p>
-            </div>
-          )}
-          <p className="mt-2 text-right text-xs text-primary-700">
-            총 수수료 <span className="font-bold">{formatKRW(preview.totalCommission)}</span>
-          </p>
         </div>
 
         <div className="flex justify-end gap-2">
