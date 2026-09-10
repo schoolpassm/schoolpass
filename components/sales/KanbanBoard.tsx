@@ -4,7 +4,7 @@ import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import Link from "next/link";
 import { limit, orderBy, where } from "firebase/firestore";
-import { ArrowDownWideNarrow, Sparkles, Users } from "lucide-react";
+import { ArrowDownWideNarrow, Sparkles, Users, Lock } from "lucide-react";
 import { PIPELINE_STAGES, SchoolSummaryDoc, SchoolStatus, UserDoc } from "@/types";
 import { GradeBadge } from "@/components/ui/Badge";
 import { updateSchoolStatus } from "@/lib/api/schools";
@@ -44,6 +44,9 @@ export function KanbanBoard() {
     if (!firebaseUser) return;
     await updateSchoolStatus(draggableId, destination.droppableId as SchoolStatus, firebaseUser.uid, userDoc?.name ?? "");
   }
+
+  // 관리자는 전체를 옮길 수 있고, 그 외엔 본인이 담당자로 지정된 학교만 옮길 수 있다
+  const isAdmin = userDoc?.role === "admin";
 
   return (
     <div>
@@ -94,12 +97,24 @@ export function KanbanBoard() {
             "{ownerFilter === UNASSIGNED ? "담당자 미배정" : ownerFilter}" 담당 학교만 표시 중 — 다른 팀원이 이미 진행 중인 곳은 안 보입니다
           </span>
         )}
+        {!isAdmin && (
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-ink-300">
+            <Lock size={11} /> 내가 담당인 학교만 드래그로 옮길 수 있어요
+          </span>
+        )}
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
           {PIPELINE_STAGES.map((stage) => (
-            <KanbanColumn key={`${stage}-${sortMode}`} stage={stage} sortMode={sortMode} ownerFilter={ownerFilter} />
+            <KanbanColumn
+              key={`${stage}-${sortMode}`}
+              stage={stage}
+              sortMode={sortMode}
+              ownerFilter={ownerFilter}
+              currentUid={firebaseUser?.uid}
+              isAdmin={isAdmin}
+            />
           ))}
         </div>
       </DragDropContext>
@@ -107,7 +122,19 @@ export function KanbanBoard() {
   );
 }
 
-function KanbanColumn({ stage, sortMode, ownerFilter }: { stage: SchoolStatus; sortMode: SortMode; ownerFilter: string }) {
+function KanbanColumn({
+  stage,
+  sortMode,
+  ownerFilter,
+  currentUid,
+  isAdmin,
+}: {
+  stage: SchoolStatus;
+  sortMode: SortMode;
+  ownerFilter: string;
+  currentUid?: string;
+  isAdmin: boolean;
+}) {
   // 각 컬럼이 독립적으로 실시간 구독 — status 필터 + limit(100)으로 bounded read 유지
   // 담당자 필터는 이미 불러온 100건 안에서 클라이언트단으로 걸러낸다 (별도 쿼리/인덱스 불필요)
   const { data: rawSchools, loading, error } = useCollection<SchoolSummaryDoc>("schools_summary", [
@@ -145,51 +172,56 @@ function KanbanColumn({ stage, sortMode, ownerFilter }: { stage: SchoolStatus; s
             </span>
           </div>
           <div className="flex-1 space-y-2 px-2 pb-2 min-h-[120px]">
-            {schools.map((s, index) => (
-              <Draggable draggableId={s.id} index={index} key={s.id}>
-                {(dragProvided, dragSnapshot) => (
-                  <Link
-                    href={`/schools/${s.id}`}
-                    ref={dragProvided.innerRef}
-                    {...dragProvided.draggableProps}
-                    {...dragProvided.dragHandleProps}
-                    className={cn(
-                      "block rounded-lg border border-surface-border bg-white p-3 shadow-card",
-                      dragSnapshot.isDragging && "shadow-pop ring-2 ring-primary-300"
-                    )}
-                  >
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <GradeBadge grade={s.grade} />
-                      <div className="flex items-center gap-1">
-                        {s.aiScore != null && (
-                          <span className="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-600">
-                            AI {s.aiScore}
-                          </span>
-                        )}
-                        {s.isNewlyOpened && (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
-                            신설
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium text-ink-900">{s.name}</p>
-                    <p className="mt-0.5 text-xs text-ink-500">{s.region}</p>
-                    <p className="mt-1">
-                      {s.ownerName ? (
-                        <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
-                          담당 {s.ownerName}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-status-danger">
-                          담당자 미배정
-                        </span>
+            {schools.map((s, index) => {
+              const canDrag = isAdmin || s.ownerUid === currentUid;
+              return (
+                <Draggable draggableId={s.id} index={index} key={s.id} isDragDisabled={!canDrag}>
+                  {(dragProvided, dragSnapshot) => (
+                    <Link
+                      href={`/schools/${s.id}`}
+                      ref={dragProvided.innerRef}
+                      {...dragProvided.draggableProps}
+                      {...dragProvided.dragHandleProps}
+                      className={cn(
+                        "block rounded-lg border border-surface-border bg-white p-3 shadow-card",
+                        dragSnapshot.isDragging && "shadow-pop ring-2 ring-primary-300",
+                        !canDrag && "opacity-70"
                       )}
-                    </p>
-                  </Link>
-                )}
-              </Draggable>
-            ))}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <GradeBadge grade={s.grade} />
+                        <div className="flex items-center gap-1">
+                          {!canDrag && <Lock size={11} className="text-ink-300" />}
+                          {s.aiScore != null && (
+                            <span className="rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-600">
+                              AI {s.aiScore}
+                            </span>
+                          )}
+                          {s.isNewlyOpened && (
+                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                              신설
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm font-medium text-ink-900">{s.name}</p>
+                      <p className="mt-0.5 text-xs text-ink-500">{s.region}</p>
+                      <p className="mt-1">
+                        {s.ownerName ? (
+                          <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
+                            담당 {s.ownerName}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-status-danger">
+                            담당자 미배정
+                          </span>
+                        )}
+                      </p>
+                    </Link>
+                  )}
+                </Draggable>
+              );
+            })}
             {provided.placeholder}
           </div>
         </div>
