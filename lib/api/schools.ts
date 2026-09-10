@@ -44,6 +44,7 @@ function toSummaryFields(input: Partial<SchoolDoc>): Partial<SchoolSummaryDoc> {
   if (input.contactPhone !== undefined) summary.contactPhone = input.contactPhone;
   if (input.contactEmail !== undefined) summary.contactEmail = input.contactEmail;
   if (input.studentCount !== undefined) summary.studentCount = input.studentCount;
+  if (input.ownerUid !== undefined) summary.ownerUid = input.ownerUid;
   if (input.ownerName !== undefined) summary.ownerName = input.ownerName;
   if (input.partnerId !== undefined) summary.partnerId = input.partnerId;
   if (input.eduOfficeId !== undefined) summary.eduOfficeId = input.eduOfficeId;
@@ -152,7 +153,7 @@ export async function addSchoolActivity(
     const schoolSnap = await getDoc(doc(db, DETAIL, schoolId));
     if (schoolSnap.exists() && !schoolSnap.data()?.ownerUid) {
       batch.update(doc(db, DETAIL, schoolId), { ownerUid: activity.authorUid, ownerName: activity.authorName ?? "" });
-      batch.set(doc(db, SUMMARY, schoolId), { ownerName: activity.authorName ?? "" }, { merge: true });
+      batch.set(doc(db, SUMMARY, schoolId), { ownerUid: activity.authorUid, ownerName: activity.authorName ?? "" }, { merge: true });
     }
   }
 
