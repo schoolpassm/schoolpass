@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Route, MapPin } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -17,6 +17,9 @@ export default function SchoolsMapPage() {
   const [visibleSchools, setVisibleSchools] = useState<SchoolSummaryDoc[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [geocoding, setGeocoding] = useState(false);
+  const [autoGeocoding, setAutoGeocoding] = useState(false);
+  const [autoProgress, setAutoProgress] = useState({ success: 0, failed: 0, windows: 0 });
+  const autoAfterIdRef = useRef<string | undefined>(undefined); // 중단됐다 재시도해도 처음부터 다시 안 하고 이어서 하기 위한 커서
 
   const handleVisibleChange = useCallback((schools: SchoolSummaryDoc[]) => {
     setVisibleSchools(schools);
@@ -39,6 +42,51 @@ export default function SchoolsMapPage() {
       alert(e.message || "지오코딩 중 오류가 발생했습니다.");
     } finally {
       setGeocoding(false);
+    }
+  }
+
+  /**
+   * 위경도 없는 학교가 하나도 안 남을 때까지(done=true) 자동으로 반복 호출한다.
+   * 매 호출마다 토큰을 새로 가져와 장시간 작업 중 토큰 만료를 방지한다 (학교알리미 전국동기화와 같은 패턴).
+   */
+  async function handleAutoGeocode() {
+    if (!firebaseUser) return;
+    setAutoGeocoding(true);
+    let done = false;
+    let guard = 0; // 무한루프 방지 안전장치
+
+    try {
+      while (!done && guard < 2000) {
+        guard += 1;
+        const token = await firebaseUser.getIdToken();
+        const res = await fetch("/api/schools/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ afterId: autoAfterIdRef.current }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "지오코딩 실패");
+
+        setAutoProgress((prev) => ({
+          success: prev.success + json.success,
+          failed: prev.failed + json.failed,
+          windows: prev.windows + 1,
+        }));
+
+        autoAfterIdRef.current = json.lastId ?? autoAfterIdRef.current;
+        done = json.done;
+      }
+      if (done) {
+        alert("전체 자동 지오코딩이 끝났습니다. 지도를 새로고침하면 반영된 위치가 보입니다.");
+        autoAfterIdRef.current = undefined; // 완주했으니 다음 실행은 처음부터
+        setAutoProgress({ success: 0, failed: 0, windows: 0 });
+      } else {
+        alert("안전장치로 이번 실행을 멈췄습니다. 같은 버튼을 다시 누르면 중단된 지점부터 이어서 진행됩니다.");
+      }
+    } catch (e: any) {
+      alert((e.message || "지오코딩 중 오류가 발생했습니다.") + " — 같은 버튼을 다시 누르면 중단된 지점부터 이어서 진행됩니다.");
+    } finally {
+      setAutoGeocoding(false);
     }
   }
 
@@ -68,8 +116,14 @@ export default function SchoolsMapPage() {
           <ArrowLeft size={14} /> 목록으로
         </Link>
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={handleGeocode} disabled={geocoding}>
+          <Button size="sm" variant="secondary" onClick={handleGeocode} disabled={geocoding || autoGeocoding}>
             <MapPin size={14} /> {geocoding ? "지오코딩 중..." : "주소 좌표 변환 (50건)"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={handleAutoGeocode} disabled={geocoding || autoGeocoding}>
+            <MapPin size={14} />
+            {autoGeocoding
+              ? `자동 순회 중... (성공 ${autoProgress.success} · 실패 ${autoProgress.failed})`
+              : "전체 자동 순회 (위치정보 없는 학교 전부)"}
           </Button>
           {selectedIds.size > 0 && (
             <Button size="sm" onClick={handleRoute}>
