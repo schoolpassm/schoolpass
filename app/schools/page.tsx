@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2, Users, Sparkles } from "lucide-react";
+import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2, Users, Sparkles, LocateFixed, X } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
@@ -22,6 +22,7 @@ import { SchoolGrade, SchoolLevel, SchoolStatus } from "@/types";
 import { exportSchoolsToExcel, parseSchoolExcel, downloadSchoolTemplate } from "@/lib/excel";
 import { bulkImportSchools } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
+import { useNearbySchools } from "@/lib/hooks/useNearbySchools";
 import { buildVisitRouteUrl } from "@/lib/route";
 import { NEIS_REGION_CODES } from "@/lib/neis";
 
@@ -42,6 +43,8 @@ function SchoolsPageInner() {
   const [neisOpen, setNeisOpen] = useState(false);
   const [studentCountOpen, setStudentCountOpen] = useState(false);
   const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
+  const [nearbyOpen, setNearbyOpen] = useState(false);
+  const { schools: nearbySchools, loading: nearbyLoading, error: nearbyError, radiusKm, findNearby } = useNearbySchools();
   const [keywordInput, setKeywordInput] = useState("");
   const [namePrefix, setNamePrefix] = useState("");
   const [sortByName, setSortByName] = useState(false);
@@ -157,6 +160,16 @@ function SchoolsPageInner() {
           <Button variant="secondary" size="sm" onClick={() => setBulkScoreOpen(true)}>
             <Sparkles size={14} /> AI 점수 일괄 매기기
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setNearbyOpen(true);
+              findNearby(5);
+            }}
+          >
+            <LocateFixed size={14} /> 내 주변 학교
+          </Button>
           <Button variant="secondary" size="sm" onClick={downloadSchoolTemplate}>
             <FileDown size={14} /> 템플릿
           </Button>
@@ -251,6 +264,55 @@ function SchoolsPageInner() {
           </Button>
         )}
       </div>
+
+      {nearbyOpen && (
+        <div className="mb-4 rounded-xl border border-primary-100 bg-primary-50/40 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-primary-700">
+              <LocateFixed size={15} /> 내 주변 학교 (가까운 순, 최대 30곳)
+            </p>
+            <div className="flex items-center gap-1">
+              {[3, 5, 10].map((km) => (
+                <button
+                  key={km}
+                  onClick={() => findNearby(km)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    radiusKm === km ? "bg-primary-500 text-white" : "bg-white text-ink-500 hover:bg-surface-muted"
+                  }`}
+                >
+                  {km}km
+                </button>
+              ))}
+              <button onClick={() => setNearbyOpen(false)} className="ml-1 rounded-md p-1 text-ink-400 hover:bg-white">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+          {nearbyLoading && (
+            <p className="flex items-center gap-2 text-xs text-ink-500">
+              <Loader2 size={14} className="animate-spin" /> 위치 확인 중... (브라우저에서 위치 권한을 물으면 "허용"을 눌러주세요)
+            </p>
+          )}
+          {nearbyError && <p className="text-xs text-status-danger">{nearbyError}</p>}
+          {!nearbyLoading && !nearbyError && nearbySchools.length === 0 && (
+            <p className="text-xs text-ink-300">주변 {radiusKm}km 안에 위경도가 등록된 학교가 없습니다.</p>
+          )}
+          {nearbySchools.length > 0 && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {nearbySchools.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/schools/${s.id}`}
+                  className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-card hover:ring-1 hover:ring-primary-300"
+                >
+                  <span className="truncate font-medium text-ink-900">{s.name}</span>
+                  <span className="ml-2 shrink-0 text-xs font-semibold text-primary-600">{s.distanceKm.toFixed(1)}km</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <SchoolTable schools={schools} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
 
