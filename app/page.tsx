@@ -25,6 +25,7 @@ import { TopSchoolsList } from "@/components/dashboard/TopSchoolsList";
 import { TodayMeetings } from "@/components/dashboard/TodayMeetings";
 import { AiBriefingCard } from "@/components/dashboard/AiBriefingCard";
 import { BudgetRecommendations } from "@/components/dashboard/BudgetRecommendations";
+import { NearbySchoolsWidget } from "@/components/dashboard/NearbySchoolsWidget";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
@@ -197,6 +198,10 @@ export default function DashboardPage() {
 
       <div className="mt-4">
         <TodayMeetings />
+      </div>
+
+      <div className="mt-4">
+        <NearbySchoolsWidget />
       </div>
 
       <div className="mt-4">
