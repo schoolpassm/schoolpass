@@ -6,7 +6,7 @@ import { useSchoolsInBounds } from "@/lib/hooks/useSchoolsInBounds";
 import { haversineDistanceKm } from "@/lib/geo";
 import { SchoolSummaryDoc } from "@/types";
 
-/** 영업 상태를 3그룹으로 나눠 마커 색상을 다르게 표시한다: 구축완료(초록) / 계약(파랑) / 미접촉(회색) / 진행중(주황) */
+/** 영업 상태를 4그룹으로 나눠 마커 "테두리" 색상으로 표시: 구축완료(초록) / 계약(파랑) / 미접촉(회색) / 진행중(주황) */
 function colorForStatus(status?: string): string {
   if (status === "설치완료") return "#16A34A"; // 구축학교 - 초록
   if (status === "계약") return "#3B63E0"; // 계약학교 - 파랑
@@ -14,10 +14,20 @@ function colorForStatus(status?: string): string {
   return "#F0A93B"; // 그 외(전화완료~협의중 등 진행중) - 주황
 }
 
-function buildMarkerImage(kakao: any, color: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="${color}" stroke="white" stroke-width="3"/></svg>`;
+/** 학교급을 마커 "안쪽 색"으로 표시 — 초중고가 한눈에 구분되도록 */
+function colorForLevel(level?: string): string {
+  if (level === "초등학교") return "#38BDF8"; // 하늘색
+  if (level === "중학교") return "#A78BFA"; // 보라
+  if (level === "고등학교") return "#1D4ED8"; // 진한 남색
+  if (level === "특수학교") return "#EC4899"; // 핑크
+  return "#94A3B8"; // 기타(유치원 등) - 회색
+}
+
+/** 바깥 테두리는 영업상태, 안쪽 채움은 학교급 — 두 정보를 한 마커에서 동시에 표시 */
+function buildMarkerImage(kakao: any, statusColor: string, levelColor: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"><circle cx="15" cy="15" r="12" fill="${statusColor}"/><circle cx="15" cy="15" r="8" fill="${levelColor}" stroke="white" stroke-width="2"/></svg>`;
   const url = `data:image/svg+xml;base64,${btoa(svg)}`;
-  return new kakao.maps.MarkerImage(url, new kakao.maps.Size(28, 28), { offset: new kakao.maps.Point(14, 14) });
+  return new kakao.maps.MarkerImage(url, new kakao.maps.Size(30, 30), { offset: new kakao.maps.Point(15, 15) });
 }
 
 export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsChange?: (schools: SchoolSummaryDoc[]) => void }) {
@@ -74,7 +84,7 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
       .map((s) => {
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.lat!, s.lng!),
-          image: buildMarkerImage(kakao, colorForStatus(s.status)),
+          image: buildMarkerImage(kakao, colorForStatus(s.status), colorForLevel(s.level)),
         });
         kakao.maps.event.addListener(marker, "click", () => {
           window.open(`/schools/${s.id}`, "_blank");
@@ -156,10 +166,18 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
       </div>
       <div ref={mapRef} className="h-[70vh] w-full rounded-xl border border-surface-border" />
       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-ink-500">
+        <span className="font-semibold text-ink-700">테두리(영업상태):</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#16A34A" }} /> 구축완료</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#3B63E0" }} /> 계약</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#F0A93B" }} /> 진행중</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#98A2B3" }} /> 미접촉(신규)</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-ink-500">
+        <span className="font-semibold text-ink-700">안쪽(학교급):</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#38BDF8" }} /> 초등학교</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#A78BFA" }} /> 중학교</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#1D4ED8" }} /> 고등학교</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#EC4899" }} /> 특수학교</span>
       </div>
     </div>
   );
