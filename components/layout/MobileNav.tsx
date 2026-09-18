@@ -16,6 +16,7 @@ import {
   FolderOpen,
   X,
   Sparkles,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -24,6 +25,7 @@ const NAV = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/copilot", label: "AI Copilot", icon: Sparkles },
   { href: "/schools", label: "학교관리", icon: School },
+  { href: "/institutions", label: "관공서 관리", icon: Landmark },
   { href: "/education-offices", label: "교육지원청", icon: Building2 },
   { href: "/sales", label: "영업관리", icon: PhoneCall },
   { href: "/partners", label: "파트너관리", icon: Users },

@@ -91,6 +91,21 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // institutions: 관공서(제로패스 타겟) — 학교와 완전히 별개 컬렉션, 단일 컬렉션(요약본 분리 불필요).
+    // ------------------------------------------------------------------
+    match /institutions/{institutionId} {
+      allow read: if isManager();
+      allow create, update: if isManager() && isActive();
+      allow delete: if isAdmin();
+
+      match /activities/{activityId} {
+        allow read: if isManager();
+        allow create: if isManager() && isActive();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // ------------------------------------------------------------------
     // educationOffices
     // ------------------------------------------------------------------
     match /educationOffices/{officeId} {

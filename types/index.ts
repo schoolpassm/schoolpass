@@ -347,3 +347,32 @@ export const PIPELINE_STAGE_LABELS: Record<SchoolStatus, string> = {
   보류: "보류",
   실패: "실패",
 };
+
+// ----------------------------------------------------------------------------
+// 관공서(제로패스 타겟) — 학교와 완전히 별개 컬렉션.
+// 학교(수만 건, summary/detail 분리·페이지네이션 필수)와 달리 전국 시/군/구 본청
+// 수준(226곳 안팎)이라 규모가 훨씬 작아 단일 컬렉션으로 충분하다.
+// 파이프라인 상태(SchoolStatus)·등급(SchoolGrade)은 그대로 재사용한다.
+// ----------------------------------------------------------------------------
+export type InstitutionType = "시청" | "군청" | "구청" | "소방서" | "경찰서" | "국방부·군기관" | "기타 공공기관";
+
+export interface InstitutionDoc extends BaseDoc {
+  name: string;
+  type: InstitutionType;
+  region: string; // 시/도
+  address: string;
+  lat?: number;
+  lng?: number;
+  phone?: string; // 대표전화
+  // 학교의 담당자 개념과 동일 — 청사출입보안지침상 "시설관리책임자"/"보안담당관"이 보통 총무과 소속
+  contactName?: string;
+  contactTitle?: string; // 예: 총무과 주무관, 보안담당관
+  contactPhone?: string;
+  contactEmail?: string;
+  status: SchoolStatus; // 파이프라인 상태 재사용
+  grade: SchoolGrade; // 등급 재사용
+  ownerUid?: string;
+  ownerName?: string;
+  tags: string[];
+  note?: string;
+}
