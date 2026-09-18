@@ -354,7 +354,21 @@ export const PIPELINE_STAGE_LABELS: Record<SchoolStatus, string> = {
 // 수준(226곳 안팎)이라 규모가 훨씬 작아 단일 컬렉션으로 충분하다.
 // 파이프라인 상태(SchoolStatus)·등급(SchoolGrade)은 그대로 재사용한다.
 // ----------------------------------------------------------------------------
-export type InstitutionType = "시청" | "군청" | "구청" | "소방서" | "경찰서" | "국방부·군기관" | "기타 공공기관";
+export type InstitutionType =
+  | "시청"
+  | "군청"
+  | "구청"
+  | "소방서"
+  | "경찰서"
+  | "국방부·군기관"
+  | "기타 공공기관"
+  // --- SchoolPass 교육행정 계층 (2026.09 공통 CRM 엔진 확장으로 추가) ---
+  | "교육부"
+  | "교육청"
+  | "교육지원청";
+
+/** 교육행정 계층 여부 판별 헬퍼 (ZeroPass 관공서 타입과 구분할 때 사용) */
+export const EDU_HIERARCHY_TYPES: InstitutionType[] = ["교육부", "교육청", "교육지원청"];
 export type BudgetStatus = "미확인" | "예산없음" | "신규예산필요" | "예산검토" | "예산편성예정" | "예산확보" | "구매진행";
 export type InterestLevel = "높음" | "보통" | "낮음";
 
@@ -389,4 +403,117 @@ export interface InstitutionDoc extends BaseDoc {
   ownerName?: string;
   tags: string[];
   note?: string;
+  // --- 기관 계층 구조 (교육부→교육청→교육지원청→학교 / 향후 국방부→각군→사령부→부대 확장용) ---
+  parentInstitutionId?: string; // 상위기관 참조 (institutions/{id}), 최상위 기관은 미설정
+  ancestorPath?: string[]; // 루트부터 직속 상위까지의 id 배열 (breadcrumb·하위전체조회용 비정규화 캐시)
+  childCount?: number; // 하위기관 수 (목록에서 "하위 3곳" 배지 표시용 비정규화 캐시)
 }
+
+// ----------------------------------------------------------------------------
+// institutions/{id}/contacts — 담당자 다중관리 (기관:담당자 = 1:N)
+// 기존 InstitutionDoc.contactName 등 단일 담당자 필드는 "대표 담당자" 표시용으로 계속 유지하고,
+// 이 서브컬렉션은 실제 담당자 이력 전체를 보존한다 (담당자 교체 시에도 기존 이력 삭제하지 않음).
+// ----------------------------------------------------------------------------
+export type ContactReaction = "긍정적" | "중립" | "부정적" | "무반응" | "미확인";
+
+export interface InstitutionContactDoc extends BaseDoc {
+  name: string;
+  department?: string; // 부서
+  title?: string; // 직책
+  phone?: string;
+  email?: string;
+  responsibility?: string; // 담당업무
+  isFieldContact?: boolean; // 실무담당 여부
+  isDecisionMaker?: boolean; // 의사결정 관련성
+  firstContactedAt?: Timestamp | null;
+  lastContactedAt?: Timestamp | null;
+  contactCount?: number; // 접촉 횟수 (활동기록 생성 시 자동 증가)
+  reaction?: ContactReaction;
+  interestLevel?: InterestLevel;
+  active?: boolean; // false = 퇴사/교체 등으로 더 이상 유효하지 않은 담당자 (삭제 대신 비활성화)
+  note?: string;
+}
+
+// ----------------------------------------------------------------------------
+// institutions/{id}/activities — 접촉 타임라인 (기존 addInstitutionActivity가 쓰던 느슨한
+// 스키마를 공식 타입으로 정리. type 값은 스펙 8번 접촉방법 전체를 포괄하도록 확장.
+// ----------------------------------------------------------------------------
+export type InstitutionContactMethod =
+  | "call"
+  | "visit"
+  | "email"
+  | "sms"
+  | "kakao"
+  | "online_meeting"
+  | "demo"
+  | "document"
+  | "etc";
+
+export interface InstitutionActivityDoc extends BaseDoc {
+  type: InstitutionContactMethod;
+  contactId?: string; // institutions/{id}/contacts 참조 (누구와 접촉했는지)
+  summary: string;
+  reaction?: ContactReaction;
+  requestedItems?: string; // 상대방 요청사항
+  deliveredMaterials?: string; // 전달자료
+  nextActionAt?: Timestamp | null;
+  nextActionSummary?: string;
+  authorUid: string;
+  authorName: string;
+}
+
+// ----------------------------------------------------------------------------
+// institutions/{id}/documents — 정책·공문 CRM (스펙 6번)
+// AI는 이 기록을 근거로만 답하고 법률적 판단을 확정적으로 내리지 않는다 (프롬프트 레벨에서 강제).
+// ----------------------------------------------------------------------------
+export interface InstitutionDocumentDoc extends BaseDoc {
+  relatedLaw?: string; // 관련 법령
+  relatedPolicy?: string; // 관련 정책
+  docTitle?: string; // 공문 제목
+  issuingOrg?: string; // 공문 발행기관
+  docDate?: Timestamp | null;
+  relatedLink?: string;
+  institutionResponded?: boolean; // 기관의 대응 여부
+  contactReply?: string; // 담당자 답변
+  followUp?: string; // 후속조치
+}
+
+// ----------------------------------------------------------------------------
+// 공공영업 확장 파이프라인 (스펙 4번, 16단계) — 기존 SchoolStatus(9단계 학교 칸반)는
+// 그대로 유지하고, 관공서/교육행정기관 전용 확장 파이프라인은 별도 타입으로 둔다.
+// Phase 2에서 InstitutionDoc.status에 선택 적용 예정 (현재는 스키마만 정의, 미사용 — breaking change 방지).
+// ----------------------------------------------------------------------------
+export type PublicPipelineStage =
+  | "조사"
+  | "대상기관선정"
+  | "담당부서확인"
+  | "담당자확인"
+  | "최초접촉"
+  | "자료전달"
+  | "미팅"
+  | "제품시연"
+  | "시범사업검토"
+  | "내부검토"
+  | "예산검토"
+  | "조달검토"
+  | "계약협의"
+  | "계약완료"
+  | "보류"
+  | "종료";
+
+export const PUBLIC_PIPELINE_STAGES: PublicPipelineStage[] = [
+  "조사",
+  "대상기관선정",
+  "담당부서확인",
+  "담당자확인",
+  "최초접촉",
+  "자료전달",
+  "미팅",
+  "제품시연",
+  "시범사업검토",
+  "내부검토",
+  "예산검토",
+  "조달검토",
+  "계약협의",
+  "계약완료",
+];

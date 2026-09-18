@@ -103,6 +103,18 @@ service cloud.firestore {
         allow create: if isManager() && isActive();
         allow update, delete: if isAdmin();
       }
+
+      match /contacts/{contactId} {
+        allow read: if isManager();
+        allow create, update: if isManager() && isActive();
+        allow delete: if isAdmin();
+      }
+
+      match /documents/{documentId} {
+        allow read: if isManager();
+        allow create, update: if isManager() && isActive();
+        allow delete: if isAdmin();
+      }
     }
 
     // ------------------------------------------------------------------

@@ -69,7 +69,7 @@ export default function InstitutionDetailPage() {
   async function handleLogNote() {
     if (!firebaseUser || !note.trim()) return;
     await addInstitutionActivity(institutionId, {
-      type: "note",
+      type: "etc",
       summary: note.trim(),
       authorUid: firebaseUser.uid,
       authorName: userDoc?.name ?? "",

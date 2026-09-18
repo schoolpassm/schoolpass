@@ -1,0 +1,356 @@
+diff --git a/app/institutions/[institutionId]/page.tsx b/app/institutions/[institutionId]/page.tsx
+index 92cf7d1..9df218b 100644
+--- a/app/institutions/[institutionId]/page.tsx
++++ b/app/institutions/[institutionId]/page.tsx
+@@ -69,7 +69,7 @@ export default function InstitutionDetailPage() {
+   async function handleLogNote() {
+     if (!firebaseUser || !note.trim()) return;
+     await addInstitutionActivity(institutionId, {
+-      type: "note",
++      type: "etc",
+       summary: note.trim(),
+       authorUid: firebaseUser.uid,
+       authorName: userDoc?.name ?? "",
+diff --git a/firestore.rules b/firestore.rules
+index 7f331ea..2759233 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -103,6 +103,18 @@ service cloud.firestore {
+         allow create: if isManager() && isActive();
+         allow update, delete: if isAdmin();
+       }
++
++      match /contacts/{contactId} {
++        allow read: if isManager();
++        allow create, update: if isManager() && isActive();
++        allow delete: if isAdmin();
++      }
++
++      match /documents/{documentId} {
++        allow read: if isManager();
++        allow create, update: if isManager() && isActive();
++        allow delete: if isAdmin();
++      }
+     }
+ 
+     // ------------------------------------------------------------------
+diff --git a/lib/api/institutions-api.ts b/lib/api/institutions-api.ts
+deleted file mode 100644
+index 6be7a85..0000000
+--- a/lib/api/institutions-api.ts
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import { addDoc, collection, deleteDoc, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+-import { db } from "@/lib/firebase";
+-import { InstitutionDoc } from "@/types";
+-
+-const COLLECTION = "institutions";
+-
+-export async function createInstitution(input: Partial<InstitutionDoc>, uid: string) {
+-  return addDoc(collection(db, COLLECTION), {
+-    ...input,
+-    status: input.status ?? "신규",
+-    grade: input.grade ?? "C",
+-    tags: input.tags ?? [],
+-    createdBy: uid,
+-    createdAt: serverTimestamp(),
+-    updatedAt: serverTimestamp(),
+-  });
+-}
+-
+-export async function updateInstitution(id: string, patch: Partial<InstitutionDoc>) {
+-  return updateDoc(doc(db, COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+-}
+-
+-export async function deleteInstitution(id: string) {
+-  return deleteDoc(doc(db, COLLECTION, id));
+-}
+-
+-export async function updateInstitutionStatus(id: string, status: InstitutionDoc["status"]) {
+-  return updateDoc(doc(db, COLLECTION, id), { status, updatedAt: serverTimestamp() });
+-}
+-
+-/**
+- * 담당자 자동 지정: 이 관공서에 아직 담당자가 없는 상태에서 누군가 전화/이메일/문자/방문을 기록하면
+- * 그 사람이 자동으로 담당자가 된다 (학교와 동일한 정책).
+- */
+-export async function addInstitutionActivity(
+-  institutionId: string,
+-  activity: { type: "call" | "email" | "sms" | "visit" | "note"; summary: string; authorUid: string; authorName: string }
+-) {
+-  const activityRef = await addDoc(collection(db, COLLECTION, institutionId, "activities"), {
+-    ...activity,
+-    createdAt: serverTimestamp(),
+-  });
+-
+-  if (activity.type === "call" || activity.type === "email" || activity.type === "sms" || activity.type === "visit") {
+-    const snap = await getDoc(doc(db, COLLECTION, institutionId));
+-    if (snap.exists() && !snap.data()?.ownerUid) {
+-      await updateDoc(doc(db, COLLECTION, institutionId), { ownerUid: activity.authorUid, ownerName: activity.authorName });
+-    }
+-  }
+-
+-  return activityRef;
+-}
+diff --git a/lib/api/institutions.ts b/lib/api/institutions.ts
+index 6585b86..253ba51 100644
+--- a/lib/api/institutions.ts
++++ b/lib/api/institutions.ts
+@@ -1,16 +1,73 @@
+-import { addDoc, collection, deleteDoc, doc, getDoc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
++import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+ import { db } from "@/lib/firebase";
+-import { InstitutionDoc } from "@/types";
++import { InstitutionActivityDoc, InstitutionContactDoc, InstitutionDoc, InstitutionDocumentDoc } from "@/types";
+ import { InstitutionRow } from "@/lib/institution-excel";
+ 
+ const COLLECTION = "institutions";
+ 
+ export async function createInstitution(input: Partial<InstitutionDoc>, uid: string) {
+-  return addDoc(collection(db, COLLECTION), {
++  const ancestorPath = input.parentInstitutionId ? await getAncestorPath(input.parentInstitutionId) : [];
++  const ref = await addDoc(collection(db, COLLECTION), {
+     ...input,
+     status: input.status ?? "신규",
+     grade: input.grade ?? "C",
+     tags: input.tags ?? [],
++    ancestorPath,
++    createdBy: uid,
++    createdAt: serverTimestamp(),
++    updatedAt: serverTimestamp(),
++  });
++  if (input.parentInstitutionId) {
++    await updateDoc(doc(db, COLLECTION, input.parentInstitutionId), { childCount: increment(1) });
++  }
++  return ref;
++}
++
++/** 상위기관의 ancestorPath + 자기자신 id를 이어붙여 새 기관의 ancestorPath를 만든다 (breadcrumb·하위전체조회 캐시용). */
++async function getAncestorPath(parentInstitutionId: string): Promise<string[]> {
++  const snap = await getDoc(doc(db, COLLECTION, parentInstitutionId));
++  if (!snap.exists()) return [];
++  const parentAncestorPath = (snap.data()?.ancestorPath as string[] | undefined) ?? [];
++  return [...parentAncestorPath, parentInstitutionId];
++}
++
++/** 특정 기관의 직속 하위기관 목록 (예: 교육지원청 하나의 관할 학교/하위기관 조회) */
++export async function getChildInstitutions(parentInstitutionId: string) {
++  const q = query(collection(db, COLLECTION), where("parentInstitutionId", "==", parentInstitutionId));
++  const snap = await getDocs(q);
++  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InstitutionDoc);
++}
++
++// ----------------------------------------------------------------------------
++// institutions/{id}/contacts — 담당자 다중관리
++// ----------------------------------------------------------------------------
++export async function addInstitutionContact(institutionId: string, input: Partial<InstitutionContactDoc>, uid: string) {
++  return addDoc(collection(db, COLLECTION, institutionId, "contacts"), {
++    ...input,
++    active: input.active ?? true,
++    contactCount: input.contactCount ?? 0,
++    createdBy: uid,
++    createdAt: serverTimestamp(),
++    updatedAt: serverTimestamp(),
++  });
++}
++
++export async function updateInstitutionContact(institutionId: string, contactId: string, patch: Partial<InstitutionContactDoc>) {
++  return updateDoc(doc(db, COLLECTION, institutionId, "contacts", contactId), { ...patch, updatedAt: serverTimestamp() });
++}
++
++/** 담당자 퇴사/교체 시 삭제 대신 비활성화 (이력 보존, 스펙 7번) */
++export async function deactivateInstitutionContact(institutionId: string, contactId: string) {
++  return updateDoc(doc(db, COLLECTION, institutionId, "contacts", contactId), { active: false, updatedAt: serverTimestamp() });
++}
++
++// ----------------------------------------------------------------------------
++// institutions/{id}/documents — 정책·공문 CRM
++// ----------------------------------------------------------------------------
++export async function addInstitutionDocument(institutionId: string, input: Partial<InstitutionDocumentDoc>, uid: string) {
++  return addDoc(collection(db, COLLECTION, institutionId, "documents"), {
++    ...input,
++    institutionResponded: input.institutionResponded ?? false,
+     createdBy: uid,
+     createdAt: serverTimestamp(),
+     updatedAt: serverTimestamp(),
+@@ -65,20 +122,30 @@ export async function updateInstitutionStatus(id: string, status: InstitutionDoc
+  * 담당자 자동 지정: 이 관공서에 아직 담당자가 없는 상태에서 누군가 전화/이메일/문자/방문을 기록하면
+  * 그 사람이 자동으로 담당자가 된다 (학교와 동일한 정책).
+  */
+-export async function addInstitutionActivity(
+-  institutionId: string,
+-  activity: { type: "call" | "email" | "sms" | "visit" | "note"; summary: string; authorUid: string; authorName: string }
+-) {
++export async function addInstitutionActivity(institutionId: string, activity: Partial<InstitutionActivityDoc> & { authorUid: string; authorName: string; summary: string }) {
++  const type = activity.type ?? "call";
+   const activityRef = await addDoc(collection(db, COLLECTION, institutionId, "activities"), {
+     ...activity,
++    type,
+     createdAt: serverTimestamp(),
+   });
+ 
+-  if (activity.type === "call" || activity.type === "email" || activity.type === "sms" || activity.type === "visit") {
++  // 담당자 자동 지정 정책 유지 (학교와 동일)
++  if (["call", "email", "sms", "visit", "kakao", "online_meeting", "demo"].includes(type)) {
+     const snap = await getDoc(doc(db, COLLECTION, institutionId));
+     if (snap.exists() && !snap.data()?.ownerUid) {
+       await updateDoc(doc(db, COLLECTION, institutionId), { ownerUid: activity.authorUid, ownerName: activity.authorName });
+     }
++    await updateDoc(doc(db, COLLECTION, institutionId), { lastContactedAt: serverTimestamp() });
++  }
++
++  // 특정 담당자와의 접촉이면 그 담당자의 접촉횟수/최근접촉일도 갱신
++  if (activity.contactId) {
++    await updateDoc(doc(db, COLLECTION, institutionId, "contacts", activity.contactId), {
++      contactCount: increment(1),
++      lastContactedAt: serverTimestamp(),
++      updatedAt: serverTimestamp(),
++    });
+   }
+ 
+   return activityRef;
+diff --git a/types/index.ts b/types/index.ts
+index e4574ce..8406604 100644
+--- a/types/index.ts
++++ b/types/index.ts
+@@ -354,7 +354,21 @@ export const PIPELINE_STAGE_LABELS: Record<SchoolStatus, string> = {
+ // 수준(226곳 안팎)이라 규모가 훨씬 작아 단일 컬렉션으로 충분하다.
+ // 파이프라인 상태(SchoolStatus)·등급(SchoolGrade)은 그대로 재사용한다.
+ // ----------------------------------------------------------------------------
+-export type InstitutionType = "시청" | "군청" | "구청" | "소방서" | "경찰서" | "국방부·군기관" | "기타 공공기관";
++export type InstitutionType =
++  | "시청"
++  | "군청"
++  | "구청"
++  | "소방서"
++  | "경찰서"
++  | "국방부·군기관"
++  | "기타 공공기관"
++  // --- SchoolPass 교육행정 계층 (2026.09 공통 CRM 엔진 확장으로 추가) ---
++  | "교육부"
++  | "교육청"
++  | "교육지원청";
++
++/** 교육행정 계층 여부 판별 헬퍼 (ZeroPass 관공서 타입과 구분할 때 사용) */
++export const EDU_HIERARCHY_TYPES: InstitutionType[] = ["교육부", "교육청", "교육지원청"];
+ export type BudgetStatus = "미확인" | "예산없음" | "신규예산필요" | "예산검토" | "예산편성예정" | "예산확보" | "구매진행";
+ export type InterestLevel = "높음" | "보통" | "낮음";
+ 
+@@ -389,4 +403,117 @@ export interface InstitutionDoc extends BaseDoc {
+   ownerName?: string;
+   tags: string[];
+   note?: string;
++  // --- 기관 계층 구조 (교육부→교육청→교육지원청→학교 / 향후 국방부→각군→사령부→부대 확장용) ---
++  parentInstitutionId?: string; // 상위기관 참조 (institutions/{id}), 최상위 기관은 미설정
++  ancestorPath?: string[]; // 루트부터 직속 상위까지의 id 배열 (breadcrumb·하위전체조회용 비정규화 캐시)
++  childCount?: number; // 하위기관 수 (목록에서 "하위 3곳" 배지 표시용 비정규화 캐시)
+ }
++
++// ----------------------------------------------------------------------------
++// institutions/{id}/contacts — 담당자 다중관리 (기관:담당자 = 1:N)
++// 기존 InstitutionDoc.contactName 등 단일 담당자 필드는 "대표 담당자" 표시용으로 계속 유지하고,
++// 이 서브컬렉션은 실제 담당자 이력 전체를 보존한다 (담당자 교체 시에도 기존 이력 삭제하지 않음).
++// ----------------------------------------------------------------------------
++export type ContactReaction = "긍정적" | "중립" | "부정적" | "무반응" | "미확인";
++
++export interface InstitutionContactDoc extends BaseDoc {
++  name: string;
++  department?: string; // 부서
++  title?: string; // 직책
++  phone?: string;
++  email?: string;
++  responsibility?: string; // 담당업무
++  isFieldContact?: boolean; // 실무담당 여부
++  isDecisionMaker?: boolean; // 의사결정 관련성
++  firstContactedAt?: Timestamp | null;
++  lastContactedAt?: Timestamp | null;
++  contactCount?: number; // 접촉 횟수 (활동기록 생성 시 자동 증가)
++  reaction?: ContactReaction;
++  interestLevel?: InterestLevel;
++  active?: boolean; // false = 퇴사/교체 등으로 더 이상 유효하지 않은 담당자 (삭제 대신 비활성화)
++  note?: string;
++}
++
++// ----------------------------------------------------------------------------
++// institutions/{id}/activities — 접촉 타임라인 (기존 addInstitutionActivity가 쓰던 느슨한
++// 스키마를 공식 타입으로 정리. type 값은 스펙 8번 접촉방법 전체를 포괄하도록 확장.
++// ----------------------------------------------------------------------------
++export type InstitutionContactMethod =
++  | "call"
++  | "visit"
++  | "email"
++  | "sms"
++  | "kakao"
++  | "online_meeting"
++  | "demo"
++  | "document"
++  | "etc";
++
++export interface InstitutionActivityDoc extends BaseDoc {
++  type: InstitutionContactMethod;
++  contactId?: string; // institutions/{id}/contacts 참조 (누구와 접촉했는지)
++  summary: string;
++  reaction?: ContactReaction;
++  requestedItems?: string; // 상대방 요청사항
++  deliveredMaterials?: string; // 전달자료
++  nextActionAt?: Timestamp | null;
++  nextActionSummary?: string;
++  authorUid: string;
++  authorName: string;
++}
++
++// ----------------------------------------------------------------------------
++// institutions/{id}/documents — 정책·공문 CRM (스펙 6번)
++// AI는 이 기록을 근거로만 답하고 법률적 판단을 확정적으로 내리지 않는다 (프롬프트 레벨에서 강제).
++// ----------------------------------------------------------------------------
++export interface InstitutionDocumentDoc extends BaseDoc {
++  relatedLaw?: string; // 관련 법령
++  relatedPolicy?: string; // 관련 정책
++  docTitle?: string; // 공문 제목
++  issuingOrg?: string; // 공문 발행기관
++  docDate?: Timestamp | null;
++  relatedLink?: string;
++  institutionResponded?: boolean; // 기관의 대응 여부
++  contactReply?: string; // 담당자 답변
++  followUp?: string; // 후속조치
++}
++
++// ----------------------------------------------------------------------------
++// 공공영업 확장 파이프라인 (스펙 4번, 16단계) — 기존 SchoolStatus(9단계 학교 칸반)는
++// 그대로 유지하고, 관공서/교육행정기관 전용 확장 파이프라인은 별도 타입으로 둔다.
++// Phase 2에서 InstitutionDoc.status에 선택 적용 예정 (현재는 스키마만 정의, 미사용 — breaking change 방지).
++// ----------------------------------------------------------------------------
++export type PublicPipelineStage =
++  | "조사"
++  | "대상기관선정"
++  | "담당부서확인"
++  | "담당자확인"
++  | "최초접촉"
++  | "자료전달"
++  | "미팅"
++  | "제품시연"
++  | "시범사업검토"
++  | "내부검토"
++  | "예산검토"
++  | "조달검토"
++  | "계약협의"
++  | "계약완료"
++  | "보류"
++  | "종료";
++
++export const PUBLIC_PIPELINE_STAGES: PublicPipelineStage[] = [
++  "조사",
++  "대상기관선정",
++  "담당부서확인",
++  "담당자확인",
++  "최초접촉",
++  "자료전달",
++  "미팅",
++  "제품시연",
++  "시범사업검토",
++  "내부검토",
++  "예산검토",
++  "조달검토",
++  "계약협의",
++  "계약완료",
++];

@@ -1,0 +1,1 @@
+lib/api/institutions-api.ts 파일은 삭제하세요 (죽은 중복 코드, 사용처 없음 확인됨)
