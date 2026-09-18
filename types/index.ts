@@ -355,6 +355,8 @@ export const PIPELINE_STAGE_LABELS: Record<SchoolStatus, string> = {
 // 파이프라인 상태(SchoolStatus)·등급(SchoolGrade)은 그대로 재사용한다.
 // ----------------------------------------------------------------------------
 export type InstitutionType = "시청" | "군청" | "구청" | "소방서" | "경찰서" | "국방부·군기관" | "기타 공공기관";
+export type BudgetStatus = "미확인" | "예산없음" | "신규예산필요" | "예산검토" | "예산편성예정" | "예산확보" | "구매진행";
+export type InterestLevel = "높음" | "보통" | "낮음";
 
 export interface InstitutionDoc extends BaseDoc {
   name: string;
@@ -364,6 +366,7 @@ export interface InstitutionDoc extends BaseDoc {
   lat?: number;
   lng?: number;
   phone?: string; // 대표전화
+  department?: string; // 담당부서 (예: 총무과)
   // 학교의 담당자 개념과 동일 — 청사출입보안지침상 "시설관리책임자"/"보안담당관"이 보통 총무과 소속
   contactName?: string;
   contactTitle?: string; // 예: 총무과 주무관, 보안담당관
@@ -371,6 +374,17 @@ export interface InstitutionDoc extends BaseDoc {
   contactEmail?: string;
   status: SchoolStatus; // 파이프라인 상태 재사용
   grade: SchoolGrade; // 등급 재사용
+  interestLevel?: InterestLevel; // 관심도
+  firstContactedAt?: Timestamp | null; // 최초 접촉일
+  lastContactedAt?: Timestamp | null; // 최근 접촉일
+  nextContactDueAt?: Timestamp | null; // 다음 접촉 예정일
+  expectedAdoptionPeriod?: string; // 예상 도입 시기 (자유 입력, 예: "2026년 3분기")
+  // --- 예산 CRM (간이 버전) ---
+  budgetStatus?: BudgetStatus;
+  budgetDepartment?: string; // 예산 담당부서
+  budgetContactName?: string; // 예산 담당자
+  expectedProjectAmount?: number; // 예상 사업금액
+  expectedContractAmount?: number; // 예상 계약금액
   ownerUid?: string;
   ownerName?: string;
   tags: string[];

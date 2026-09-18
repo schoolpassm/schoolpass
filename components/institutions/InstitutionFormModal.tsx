@@ -1,16 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { Timestamp } from "firebase/firestore";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { createInstitution, updateInstitution } from "@/lib/api/institutions";
 import { useAuth } from "@/lib/auth-context";
-import { InstitutionDoc, InstitutionType, SchoolGrade, SchoolStatus } from "@/types";
+import { BudgetStatus, InstitutionDoc, InstitutionType, InterestLevel, SchoolGrade, SchoolStatus } from "@/types";
 
 const TYPES: InstitutionType[] = ["시청", "군청", "구청", "소방서", "경찰서", "국방부·군기관", "기타 공공기관"];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료"];
 const GRADES: SchoolGrade[] = ["A", "B", "C", "D"];
+const BUDGET_STATUSES: BudgetStatus[] = ["미확인", "예산없음", "신규예산필요", "예산검토", "예산편성예정", "예산확보", "구매진행"];
+const INTEREST_LEVELS: InterestLevel[] = ["높음", "보통", "낮음"];
+
+function toDateInput(ts?: Timestamp | null): string {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date(ts as any);
+  return d.toISOString().slice(0, 10);
+}
 
 interface Props {
   open: boolean;
@@ -28,12 +37,23 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
     region: institution?.region ?? "",
     address: institution?.address ?? "",
     phone: institution?.phone ?? "",
+    department: institution?.department ?? "",
     contactName: institution?.contactName ?? "",
     contactTitle: institution?.contactTitle ?? "",
     contactPhone: institution?.contactPhone ?? "",
     contactEmail: institution?.contactEmail ?? "",
     status: (institution?.status ?? "신규") as SchoolStatus,
     grade: (institution?.grade ?? "C") as SchoolGrade,
+    interestLevel: (institution?.interestLevel ?? "보통") as InterestLevel,
+    firstContactedAt: toDateInput(institution?.firstContactedAt),
+    lastContactedAt: toDateInput(institution?.lastContactedAt),
+    nextContactDueAt: toDateInput(institution?.nextContactDueAt),
+    expectedAdoptionPeriod: institution?.expectedAdoptionPeriod ?? "",
+    budgetStatus: (institution?.budgetStatus ?? "미확인") as BudgetStatus,
+    budgetDepartment: institution?.budgetDepartment ?? "",
+    budgetContactName: institution?.budgetContactName ?? "",
+    expectedProjectAmount: institution?.expectedProjectAmount ? String(institution.expectedProjectAmount) : "",
+    expectedContractAmount: institution?.expectedContractAmount ? String(institution.expectedContractAmount) : "",
     tags: institution?.tags?.join(", ") ?? "",
     note: institution?.note ?? "",
   });
@@ -47,7 +67,15 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
     if (!firebaseUser) return;
     setSaving(true);
     try {
-      const payload = { ...form, tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean) };
+      const payload = {
+        ...form,
+        tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        firstContactedAt: form.firstContactedAt ? Timestamp.fromDate(new Date(form.firstContactedAt)) : null,
+        lastContactedAt: form.lastContactedAt ? Timestamp.fromDate(new Date(form.lastContactedAt)) : null,
+        nextContactDueAt: form.nextContactDueAt ? Timestamp.fromDate(new Date(form.nextContactDueAt)) : null,
+        expectedProjectAmount: Number(form.expectedProjectAmount) || undefined,
+        expectedContractAmount: Number(form.expectedContractAmount) || undefined,
+      };
       if (isEdit && institution) {
         await updateInstitution(institution.id, payload);
       } else {
@@ -87,6 +115,9 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
             담당자 — 청사출입보안지침상 보통 총무과 "시설관리책임자"·"보안담당관"이 담당
           </p>
         </div>
+        <Field label="담당부서">
+          <Input placeholder="예: 총무과" value={form.department} onChange={(e) => set("department", e.target.value)} />
+        </Field>
         <Field label="담당자 성함">
           <Input placeholder="예: 김철수" value={form.contactName} onChange={(e) => set("contactName", e.target.value)} />
         </Field>
@@ -98,6 +129,52 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
         </Field>
         <Field label="담당자 이메일">
           <Input type="email" value={form.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} />
+        </Field>
+        <Field label="관심도">
+          <Select value={form.interestLevel} onChange={(e) => set("interestLevel", e.target.value as InterestLevel)}>
+            {INTEREST_LEVELS.map((l) => (
+              <option key={l}>{l}</option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="sm:col-span-2 mt-1 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-ink-700">접촉 일정</p>
+        </div>
+        <Field label="최초 접촉일">
+          <Input type="date" value={form.firstContactedAt} onChange={(e) => set("firstContactedAt", e.target.value)} />
+        </Field>
+        <Field label="최근 접촉일">
+          <Input type="date" value={form.lastContactedAt} onChange={(e) => set("lastContactedAt", e.target.value)} />
+        </Field>
+        <Field label="다음 접촉 예정일">
+          <Input type="date" value={form.nextContactDueAt} onChange={(e) => set("nextContactDueAt", e.target.value)} />
+        </Field>
+        <Field label="예상 도입 시기">
+          <Input placeholder="예: 2026년 3분기" value={form.expectedAdoptionPeriod} onChange={(e) => set("expectedAdoptionPeriod", e.target.value)} />
+        </Field>
+
+        <div className="sm:col-span-2 mt-1 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-ink-700">예산 현황</p>
+        </div>
+        <Field label="예산 상태">
+          <Select value={form.budgetStatus} onChange={(e) => set("budgetStatus", e.target.value as BudgetStatus)}>
+            {BUDGET_STATUSES.map((b) => (
+              <option key={b}>{b}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="예산 담당부서">
+          <Input value={form.budgetDepartment} onChange={(e) => set("budgetDepartment", e.target.value)} />
+        </Field>
+        <Field label="예산 담당자">
+          <Input value={form.budgetContactName} onChange={(e) => set("budgetContactName", e.target.value)} />
+        </Field>
+        <Field label="예상 사업금액 (원)">
+          <Input type="number" value={form.expectedProjectAmount} onChange={(e) => set("expectedProjectAmount", e.target.value)} />
+        </Field>
+        <Field label="예상 계약금액 (원)">
+          <Input type="number" value={form.expectedContractAmount} onChange={(e) => set("expectedContractAmount", e.target.value)} />
         </Field>
 
         <Field label="상태">

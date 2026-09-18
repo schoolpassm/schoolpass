@@ -2,10 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { orderBy } from "firebase/firestore";
-import { Plus, Phone, Mail, Search } from "lucide-react";
+import { Plus, Phone, Mail, Search, Upload, FileDown, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
@@ -14,17 +14,39 @@ import { useCollection } from "@/lib/hooks/useCollection";
 import { InstitutionDoc, InstitutionType, SchoolStatus } from "@/types";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
 import { toTel, toMailto } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { bulkImportInstitutions } from "@/lib/api/institutions";
+import { parseInstitutionExcel, downloadInstitutionTemplate } from "@/lib/institution-excel";
 
 const TYPES: InstitutionType[] = ["시청", "군청", "구청", "소방서", "경찰서", "국방부·군기관", "기타 공공기관"];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
 
 export default function InstitutionsPage() {
+  const { firebaseUser } = useAuth();
   const { data: institutions, loading } = useCollection<InstitutionDoc>("institutions", [orderBy("updatedAt", "desc")]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InstitutionDoc | null>(null);
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !firebaseUser) return;
+    setImporting(true);
+    try {
+      const rows = await parseInstitutionExcel(file);
+      await bulkImportInstitutions(rows, firebaseUser.uid);
+      alert(`${rows.length}건 업로드 완료`);
+    } catch (err: any) {
+      alert(err.message || "업로드 중 오류가 발생했습니다.");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const filtered = useMemo(() => {
     return institutions.filter((i) => {
@@ -68,6 +90,13 @@ export default function InstitutionsPage() {
             칸반보드
           </Button>
         </Link>
+        <Button variant="secondary" size="sm" onClick={downloadInstitutionTemplate}>
+          <FileDown size={14} /> 템플릿
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+          {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} 엑셀 일괄등록
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
         <Button
           size="sm"
           onClick={() => {

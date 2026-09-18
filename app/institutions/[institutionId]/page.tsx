@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { InstitutionDoc, SchoolStatus } from "@/types";
 import { updateInstitutionStatus, addInstitutionActivity } from "@/lib/api/institutions";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
+import { InstitutionAiToolsPanel } from "@/components/institutions/InstitutionAiToolsPanel";
 import { toTel, toSms, toMailto, formatDate } from "@/lib/utils";
 
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
@@ -101,6 +102,7 @@ export default function InstitutionDetailPage() {
                   {institution.contactEmail && ` · ${institution.contactEmail}`}
                 </p>
               )}
+              {institution.department && <p className="text-xs text-ink-400">담당부서: {institution.department}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -114,6 +116,35 @@ export default function InstitutionDetailPage() {
             </Select>
           </div>
         </div>
+
+        {(institution.budgetStatus || institution.nextContactDueAt || institution.expectedAdoptionPeriod || institution.interestLevel) && (
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-surface-border pt-4 sm:grid-cols-4">
+            {institution.interestLevel && (
+              <div className="rounded-lg bg-surface-muted p-3">
+                <p className="text-[11px] text-ink-500">관심도</p>
+                <p className="text-sm font-bold text-ink-900">{institution.interestLevel}</p>
+              </div>
+            )}
+            {institution.budgetStatus && (
+              <div className="rounded-lg bg-surface-muted p-3">
+                <p className="text-[11px] text-ink-500">예산 상태</p>
+                <p className="text-sm font-bold text-ink-900">{institution.budgetStatus}</p>
+              </div>
+            )}
+            {institution.nextContactDueAt && (
+              <div className="rounded-lg bg-surface-muted p-3">
+                <p className="text-[11px] text-ink-500">다음 접촉 예정일</p>
+                <p className="text-sm font-bold text-ink-900">{formatDate(institution.nextContactDueAt)}</p>
+              </div>
+            )}
+            {institution.expectedAdoptionPeriod && (
+              <div className="rounded-lg bg-surface-muted p-3">
+                <p className="text-[11px] text-ink-500">예상 도입 시기</p>
+                <p className="text-sm font-bold text-ink-900">{institution.expectedAdoptionPeriod}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2 border-t border-surface-border pt-4">
           <a href={toTel(callTarget)}>
@@ -143,6 +174,10 @@ export default function InstitutionDetailPage() {
 
         <InstitutionFormModal open={editOpen} onClose={() => setEditOpen(false)} institution={institution} />
       </Card>
+
+      <div className="mt-4">
+        <InstitutionAiToolsPanel institutionId={institutionId} />
+      </div>
 
       <Card className="mt-4">
         <CardHeader>
