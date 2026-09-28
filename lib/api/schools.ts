@@ -4,13 +4,35 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SchoolDoc, SchoolActivityDoc, SchoolQuoteDoc, SchoolSummaryDoc } from "@/types";
 import { SchoolRow } from "@/lib/excel";
+
+/**
+ * 여러 교육지원청 id에 속한 학교들을 schools_summary에서 한 번에 조회한다 (추천 학교 기능용, 스펙 12번).
+ * Firestore "in" 쿼리는 최대 30개 값까지만 허용하므로 30개씩 잘라서 여러 번 조회 후 합친다.
+ */
+export async function getSchoolsByEduOfficeIds(eduOfficeIds: string[]): Promise<SchoolSummaryDoc[]> {
+  if (eduOfficeIds.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < eduOfficeIds.length; i += 30) chunks.push(eduOfficeIds.slice(i, i + 30));
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const q = query(collection(db, "schools_summary"), where("eduOfficeId", "in", chunk));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SchoolSummaryDoc);
+    })
+  );
+  return results.flat();
+}
 
 /**
  * 데이터 구조 (성능 최적화)

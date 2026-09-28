@@ -19,6 +19,7 @@ import { updateInstitutionPublicStage, addInstitutionActivity } from "@/lib/api/
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
 import { InstitutionAiToolsPanel } from "@/components/institutions/InstitutionAiToolsPanel";
 import { InstitutionHierarchyPanel } from "@/components/institutions/InstitutionHierarchyPanel";
+import { RecommendedSchoolsPanel } from "@/components/institutions/RecommendedSchoolsPanel";
 import { InstitutionContactsPanel } from "@/components/institutions/InstitutionContactsPanel";
 import { InstitutionDocumentsPanel } from "@/components/institutions/InstitutionDocumentsPanel";
 import { toTel, toSms, toMailto, formatDate } from "@/lib/utils";
@@ -185,6 +186,8 @@ export default function InstitutionDetailPage() {
       </Card>
 
       <InstitutionHierarchyPanel institution={institution} />
+
+      <RecommendedSchoolsPanel institution={institution} />
 
       <div className="mt-4">
         <InstitutionAiToolsPanel institutionId={institutionId} />
