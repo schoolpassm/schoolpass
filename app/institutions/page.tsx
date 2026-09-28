@@ -13,6 +13,7 @@ import { StatusBadge, GradeBadge } from "@/components/ui/Badge";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { InstitutionDoc, InstitutionType, SchoolStatus } from "@/types";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
+import { InstitutionDashboardStats } from "@/components/institutions/InstitutionDashboardStats";
 import { toTel, toMailto } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { bulkImportInstitutions } from "@/lib/api/institutions";
@@ -70,6 +71,8 @@ export default function InstitutionsPage() {
 
   return (
     <AppShell title="관공서 관리">
+      <InstitutionDashboardStats institutions={institutions} />
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-64">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
