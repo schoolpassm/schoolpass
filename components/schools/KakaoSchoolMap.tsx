@@ -19,7 +19,7 @@ function colorForStatus(status?: string): string {
 function colorForLevel(level?: string): string {
   if (level === "초등학교") return "#38BDF8"; // 하늘색
   if (level === "중학교") return "#A78BFA"; // 보라
-  if (level === "고등학교") return "#1D4ED8"; // 진한 남색
+  if (level === "고등학교") return "#B91C1C"; // 진한 빨강(버건디) — 계약(파랑)과 헷갈리지 않도록 변경
   if (level === "특수학교") return "#EC4899"; // 핑크
   return "#94A3B8"; // 기타(유치원 등) - 회색
 }
@@ -226,7 +226,7 @@ export function KakaoSchoolMap({
         <span className="font-semibold text-ink-700">안쪽(학교급):</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#38BDF8" }} /> 초등학교</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#A78BFA" }} /> 중학교</span>
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#1D4ED8" }} /> 고등학교</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#B91C1C" }} /> 고등학교</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#EC4899" }} /> 특수학교</span>
       </div>
       {institutions && institutions.length > 0 && (
