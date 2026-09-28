@@ -5,27 +5,15 @@ export const dynamic = "force-dynamic";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import Link from "next/link";
 import { orderBy } from "firebase/firestore";
+import { AlertTriangle } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { GradeBadge } from "@/components/ui/Badge";
-import { updateInstitutionStatus } from "@/lib/api/institutions";
+import { updateInstitutionPublicStage } from "@/lib/api/institutions";
 import { useAuth } from "@/lib/auth-context";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { InstitutionDoc, PIPELINE_STAGES, SchoolStatus } from "@/types";
+import { InstitutionDoc, PublicPipelineStage, PUBLIC_PIPELINE_STAGES } from "@/types";
+import { getPublicStage, getDaysInStage, isStalled, stageAccent } from "@/lib/public-pipeline";
 import { cn } from "@/lib/utils";
-
-const STAGE_ACCENT: Record<SchoolStatus, string> = {
-  신규: "border-t-gray-400",
-  전화완료: "border-t-primary-500",
-  자료발송: "border-t-violet-500",
-  방문예정: "border-t-amber-500",
-  시연: "border-t-sky-500",
-  견적: "border-t-orange-500",
-  협의중: "border-t-yellow-500",
-  계약: "border-t-emerald-500",
-  설치완료: "border-t-green-600",
-  보류: "border-t-gray-300",
-  실패: "border-t-red-400",
-};
 
 export default function InstitutionKanbanPage() {
   const { firebaseUser, userDoc } = useAuth();
@@ -37,15 +25,23 @@ export default function InstitutionKanbanPage() {
     const { destination, draggableId, source } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
     if (!firebaseUser) return;
-    await updateInstitutionStatus(draggableId, destination.droppableId as SchoolStatus);
+    await updateInstitutionPublicStage(draggableId, destination.droppableId as PublicPipelineStage);
   }
 
+  const stalledCount = all.filter((i) => isStalled(i)).length;
+
   return (
-    <AppShell title="관공서 영업관리">
+    <AppShell title="관공서 영업관리 (공공영업 파이프라인)">
+      {stalledCount > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          <AlertTriangle size={14} />
+          현재 단계에서 14일 이상 정체된 기관이 {stalledCount}곳 있습니다. 카드의 주황색 배지를 확인하세요.
+        </div>
+      )}
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
-          {PIPELINE_STAGES.map((stage) => {
-            const items = all.filter((i) => i.status === stage);
+          {PUBLIC_PIPELINE_STAGES.map((stage) => {
+            const items = all.filter((i) => getPublicStage(i) === stage);
             return (
               <Droppable droppableId={stage} key={stage}>
                 {(provided, snapshot) => (
@@ -54,7 +50,7 @@ export default function InstitutionKanbanPage() {
                     {...provided.droppableProps}
                     className={cn(
                       "flex w-64 shrink-0 flex-col rounded-xl border-t-4 bg-surface-muted",
-                      STAGE_ACCENT[stage],
+                      stageAccent(stage),
                       snapshot.isDraggingOver && "bg-primary-50/40"
                     )}
                   >
@@ -67,6 +63,8 @@ export default function InstitutionKanbanPage() {
                     <div className="flex-1 space-y-2 px-2 pb-2 min-h-[120px]">
                       {items.map((i, index) => {
                         const canDrag = isAdmin || i.ownerUid === firebaseUser?.uid;
+                        const days = getDaysInStage(i);
+                        const stalled = isStalled(i);
                         return (
                           <Draggable draggableId={i.id} index={index} key={i.id} isDragDisabled={!canDrag}>
                             {(dragProvided, dragSnapshot) => (
@@ -89,7 +87,7 @@ export default function InstitutionKanbanPage() {
                                 </div>
                                 <p className="text-sm font-medium text-ink-900">{i.name}</p>
                                 <p className="mt-0.5 text-xs text-ink-500">{i.region}</p>
-                                <p className="mt-1">
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
                                   {i.ownerName ? (
                                     <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
                                       담당 {i.ownerName}
@@ -99,7 +97,12 @@ export default function InstitutionKanbanPage() {
                                       담당자 미배정
                                     </span>
                                   )}
-                                </p>
+                                  {stalled && (
+                                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                      <AlertTriangle size={10} /> {days}일째 정체
+                                    </span>
+                                  )}
+                                </div>
                               </Link>
                             )}
                           </Draggable>

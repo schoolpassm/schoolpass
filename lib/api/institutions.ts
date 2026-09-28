@@ -156,6 +156,19 @@ export async function updateInstitutionStatus(id: string, status: InstitutionDoc
 }
 
 /**
+ * 공공영업 확장 파이프라인(16단계) 단계 변경. stageEnteredAt을 매번 새로 찍어서
+ * "이 단계에 머문 일수"·14일 정체 판정의 기준으로 삼는다 (lib/public-pipeline.ts 참고).
+ * 기존 status(9단계) 필드는 건드리지 않는다 — 완전히 별개 트랙.
+ */
+export async function updateInstitutionPublicStage(id: string, publicStage: InstitutionDoc["publicStage"]) {
+  return updateDoc(doc(db, COLLECTION, id), {
+    publicStage,
+    stageEnteredAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * 담당자 자동 지정: 이 관공서에 아직 담당자가 없는 상태에서 누군가 전화/이메일/문자/방문을 기록하면
  * 그 사람이 자동으로 담당자가 된다 (학교와 동일한 정책).
  */

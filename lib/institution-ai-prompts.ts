@@ -17,7 +17,11 @@ export interface InstitutionContext {
   budgetStatus?: string;
   nextContactDueAt?: string | null; // "2026-09-20" 형식
   expectedAdoptionPeriod?: string;
-  daysSinceStatusChange?: number | null; // 현재 영업단계에 머문 일수
+  daysSinceStatusChange?: number | null; // 현재 영업단계(status, 9단계)에 머문 일수
+  // --- 공공영업 확장 파이프라인(16단계) — 있으면 status보다 우선해서 언급 ---
+  publicStage?: string;
+  daysInPublicStage?: number | null;
+  isStalled?: boolean; // 현재 publicStage에서 14일 이상 정체 중인지
 }
 
 export function modelForInstitutionAction(action: InstitutionAiAction): AiModel {
@@ -55,6 +59,9 @@ function buildContextBlock(ctx: InstitutionContext): string {
       : `- 관공서측 담당자: 아직 파악 안 됨 (통화로 성함/부서 확인 필요, 보통 총무과)`,
     ctx.daysSinceLastContact != null ? `- 최근 접촉 경과: ${ctx.daysSinceLastContact}일 전` : `- 접촉 이력 없음`,
     ctx.daysSinceStatusChange != null ? `- 현재 "${ctx.status}" 단계에 머문 기간: ${ctx.daysSinceStatusChange}일` : "",
+    ctx.publicStage
+      ? `- 공공영업 파이프라인 단계: "${ctx.publicStage}"${ctx.daysInPublicStage != null ? ` (이 단계에 머문 지 ${ctx.daysInPublicStage}일)` : ""}${ctx.isStalled ? " — ⚠ 14일 이상 정체 중, 후속조치가 시급함" : ""}`
+      : "",
     ctx.budgetStatus ? `- 예산 상태: ${ctx.budgetStatus}` : "",
     ctx.nextContactDueAt ? `- 다음 접촉 예정일: ${ctx.nextContactDueAt}` : "",
     ctx.expectedAdoptionPeriod ? `- 예상 도입 시기: ${ctx.expectedAdoptionPeriod}` : "",

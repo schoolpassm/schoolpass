@@ -407,6 +407,11 @@ export interface InstitutionDoc extends BaseDoc {
   parentInstitutionId?: string; // 상위기관 참조 (institutions/{id}), 최상위 기관은 미설정
   ancestorPath?: string[]; // 루트부터 직속 상위까지의 id 배열 (breadcrumb·하위전체조회용 비정규화 캐시)
   childCount?: number; // 하위기관 수 (목록에서 "하위 3곳" 배지 표시용 비정규화 캐시)
+  // --- 공공영업 확장 파이프라인(16단계, PublicPipelineStage) ---
+  // 기존 status(SchoolStatus, 9단계)는 하위호환을 위해 그대로 둔다 — 값을 지우거나 재정의하지 않음.
+  // publicStage가 비어있는 기존 기관은 화면에서 첫 단계("조사")로 취급한다 (일괄 백필 불필요).
+  publicStage?: PublicPipelineStage;
+  stageEnteredAt?: Timestamp | null; // 현재 publicStage에 진입한 시각 — 단계별 체류일수·14일 정체 판정 기준
 }
 
 // ----------------------------------------------------------------------------

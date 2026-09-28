@@ -5,25 +5,24 @@ export const dynamic = "force-dynamic";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { orderBy } from "firebase/firestore";
-import { Phone, Mail, MessageSquare, Pencil, UserPlus } from "lucide-react";
+import { Phone, Mail, MessageSquare, Pencil, UserPlus, AlertTriangle } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { StatusBadge, GradeBadge } from "@/components/ui/Badge";
+import { GradeBadge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
 import { useFirestoreDoc } from "@/lib/hooks/useDocument";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useAuth } from "@/lib/auth-context";
-import { InstitutionDoc, SchoolStatus } from "@/types";
-import { updateInstitutionStatus, addInstitutionActivity } from "@/lib/api/institutions";
+import { InstitutionDoc, PublicPipelineStage } from "@/types";
+import { updateInstitutionPublicStage, addInstitutionActivity } from "@/lib/api/institutions";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
 import { InstitutionAiToolsPanel } from "@/components/institutions/InstitutionAiToolsPanel";
 import { InstitutionHierarchyPanel } from "@/components/institutions/InstitutionHierarchyPanel";
 import { InstitutionContactsPanel } from "@/components/institutions/InstitutionContactsPanel";
 import { InstitutionDocumentsPanel } from "@/components/institutions/InstitutionDocumentsPanel";
 import { toTel, toSms, toMailto, formatDate } from "@/lib/utils";
-
-const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
+import { ALL_PUBLIC_STAGES, getPublicStage, getDaysInStage, isStalled } from "@/lib/public-pipeline";
 
 const ACTIVITY_LABEL: Record<string, string> = { call: "전화", email: "이메일", sms: "문자", visit: "방문", note: "메모" };
 
@@ -65,8 +64,8 @@ export default function InstitutionDetailPage() {
     );
   }
 
-  async function onStatusChange(status: SchoolStatus) {
-    await updateInstitutionStatus(institutionId, status);
+  async function onStageChange(stage: PublicPipelineStage) {
+    await updateInstitutionPublicStage(institutionId, stage);
   }
 
   async function handleLogNote() {
@@ -91,7 +90,14 @@ export default function InstitutionDetailPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-ink-900">{institution.name}</h2>
-                <StatusBadge status={institution.status} />
+                <span className="rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
+                  {getPublicStage(institution)}
+                </span>
+                {isStalled(institution) && (
+                  <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                    <AlertTriangle size={12} /> {getDaysInStage(institution)}일째 정체
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-sm text-ink-500">
                 {institution.type} · {institution.region} · 영업담당 {institution.ownerName ?? "-"}
@@ -112,8 +118,8 @@ export default function InstitutionDetailPage() {
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil size={14} /> 정보 수정
             </Button>
-            <Select value={institution.status} onChange={(e) => onStatusChange(e.target.value as SchoolStatus)} className="w-36">
-              {STATUSES.map((s) => (
+            <Select value={getPublicStage(institution)} onChange={(e) => onStageChange(e.target.value as PublicPipelineStage)} className="w-40">
+              {ALL_PUBLIC_STAGES.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </Select>

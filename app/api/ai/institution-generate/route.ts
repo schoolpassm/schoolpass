@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { callClaude } from "@/lib/ai";
 import { buildInstitutionPrompt, modelForInstitutionAction, InstitutionAiAction, InstitutionContext } from "@/lib/institution-ai-prompts";
+import { getPublicStage, getDaysInStage, isStalled } from "@/lib/public-pipeline";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -97,6 +98,9 @@ export async function POST(req: NextRequest) {
       budgetStatus: inst.budgetStatus,
       nextContactDueAt,
       expectedAdoptionPeriod: inst.expectedAdoptionPeriod,
+      publicStage: getPublicStage(inst),
+      daysInPublicStage: getDaysInStage(inst),
+      isStalled: isStalled(inst),
       recentActivitySummaries,
     };
 
