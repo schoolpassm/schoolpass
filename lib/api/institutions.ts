@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where, writeBatch, documentId } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { InstitutionActivityDoc, InstitutionContactDoc, InstitutionDoc, InstitutionDocumentDoc } from "@/types";
 import { InstitutionRow } from "@/lib/institution-excel";
@@ -36,6 +36,16 @@ export async function getChildInstitutions(parentInstitutionId: string) {
   const q = query(collection(db, COLLECTION), where("parentInstitutionId", "==", parentInstitutionId));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InstitutionDoc);
+}
+
+/** ancestorPath(id 배열)로 상위기관들의 문서를 한 번에 조회 (breadcrumb 렌더링용, 최대 30개까지 한 쿼리로 처리) */
+export async function getInstitutionsByIds(ids: string[]) {
+  if (ids.length === 0) return [];
+  const q = query(collection(db, COLLECTION), where(documentId(), "in", ids.slice(0, 30)));
+  const snap = await getDocs(q);
+  const byId = new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() } as InstitutionDoc]));
+  // 입력받은 순서(루트→직속상위) 그대로 유지해서 반환
+  return ids.map((id) => byId.get(id)).filter((v): v is InstitutionDoc => !!v);
 }
 
 // ----------------------------------------------------------------------------
@@ -106,8 +116,35 @@ export async function bulkImportInstitutions(rows: InstitutionRow[], uid: string
   }
 }
 
+/**
+ * 참고: 여기서 ancestorPath를 다시 계산하는 건 이 기관 자신뿐이다. 이미 하위기관을 거느린 기관을
+ * 다른 상위기관 밑으로 옮기는 경우, 그 하위기관들의 ancestorPath는 갱신되지 않는다(캐시가 낡음).
+ * 실무에서는 리프(학교/교육지원청 등 말단) 재배치가 대부분이라 지금은 이 한계를 감수하고,
+ * 트리 중간 노드를 옮기는 대규모 개편이 필요해지면 하위 전체를 순회하는 별도 함수로 확장한다.
+ */
 export async function updateInstitution(id: string, patch: Partial<InstitutionDoc>) {
-  return updateDoc(doc(db, COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+  if (patch.parentInstitutionId === undefined) {
+    return updateDoc(doc(db, COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+  }
+
+  const snap = await getDoc(doc(db, COLLECTION, id));
+  const prevParentId = snap.exists() ? (snap.data()?.parentInstitutionId as string | undefined) : undefined;
+  const newParentId = patch.parentInstitutionId || undefined;
+  const ancestorPath = newParentId ? await getAncestorPath(newParentId) : [];
+
+  await updateDoc(doc(db, COLLECTION, id), {
+    ...patch,
+    parentInstitutionId: newParentId ?? deleteField(),
+    ancestorPath,
+    updatedAt: serverTimestamp(),
+  });
+
+  if (prevParentId && prevParentId !== newParentId) {
+    await updateDoc(doc(db, COLLECTION, prevParentId), { childCount: increment(-1) });
+  }
+  if (newParentId && newParentId !== prevParentId) {
+    await updateDoc(doc(db, COLLECTION, newParentId), { childCount: increment(1) });
+  }
 }
 
 export async function deleteInstitution(id: string) {

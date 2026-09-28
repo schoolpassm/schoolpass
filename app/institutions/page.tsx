@@ -18,7 +18,18 @@ import { useAuth } from "@/lib/auth-context";
 import { bulkImportInstitutions } from "@/lib/api/institutions";
 import { parseInstitutionExcel, downloadInstitutionTemplate } from "@/lib/institution-excel";
 
-const TYPES: InstitutionType[] = ["시청", "군청", "구청", "소방서", "경찰서", "국방부·군기관", "기타 공공기관"];
+const TYPES: InstitutionType[] = [
+  "시청",
+  "군청",
+  "구청",
+  "소방서",
+  "경찰서",
+  "국방부·군기관",
+  "기타 공공기관",
+  "교육부",
+  "교육청",
+  "교육지원청",
+];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
 
 export default function InstitutionsPage() {

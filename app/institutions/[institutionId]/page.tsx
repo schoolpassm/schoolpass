@@ -18,6 +18,9 @@ import { InstitutionDoc, SchoolStatus } from "@/types";
 import { updateInstitutionStatus, addInstitutionActivity } from "@/lib/api/institutions";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
 import { InstitutionAiToolsPanel } from "@/components/institutions/InstitutionAiToolsPanel";
+import { InstitutionHierarchyPanel } from "@/components/institutions/InstitutionHierarchyPanel";
+import { InstitutionContactsPanel } from "@/components/institutions/InstitutionContactsPanel";
+import { InstitutionDocumentsPanel } from "@/components/institutions/InstitutionDocumentsPanel";
 import { toTel, toSms, toMailto, formatDate } from "@/lib/utils";
 
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
@@ -175,9 +178,15 @@ export default function InstitutionDetailPage() {
         <InstitutionFormModal open={editOpen} onClose={() => setEditOpen(false)} institution={institution} />
       </Card>
 
+      <InstitutionHierarchyPanel institution={institution} />
+
       <div className="mt-4">
         <InstitutionAiToolsPanel institutionId={institutionId} />
       </div>
+
+      <InstitutionContactsPanel institutionId={institutionId} />
+
+      <InstitutionDocumentsPanel institutionId={institutionId} />
 
       <Card className="mt-4">
         <CardHeader>

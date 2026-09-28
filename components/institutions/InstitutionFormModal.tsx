@@ -1,15 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { Timestamp } from "firebase/firestore";
+import { useMemo, useState } from "react";
+import { Timestamp, orderBy } from "firebase/firestore";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { createInstitution, updateInstitution } from "@/lib/api/institutions";
 import { useAuth } from "@/lib/auth-context";
+import { useCollection } from "@/lib/hooks/useCollection";
 import { BudgetStatus, InstitutionDoc, InstitutionType, InterestLevel, SchoolGrade, SchoolStatus } from "@/types";
 
-const TYPES: InstitutionType[] = ["시청", "군청", "구청", "소방서", "경찰서", "국방부·군기관", "기타 공공기관"];
+const TYPES: InstitutionType[] = [
+  "시청",
+  "군청",
+  "구청",
+  "소방서",
+  "경찰서",
+  "국방부·군기관",
+  "기타 공공기관",
+  "교육부",
+  "교육청",
+  "교육지원청",
+];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료"];
 const GRADES: SchoolGrade[] = ["A", "B", "C", "D"];
 const BUDGET_STATUSES: BudgetStatus[] = ["미확인", "예산없음", "신규예산필요", "예산검토", "예산편성예정", "예산확보", "구매진행"];
@@ -31,9 +43,18 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
   const { firebaseUser, userDoc } = useAuth();
   const isEdit = !!institution;
   const [saving, setSaving] = useState(false);
+  const [parentSearch, setParentSearch] = useState("");
+  const { data: allInstitutions } = useCollection<InstitutionDoc>("institutions", [orderBy("name")]);
+  const parentCandidates = useMemo(() => {
+    const keyword = parentSearch.trim();
+    return allInstitutions
+      .filter((i) => i.id !== institution?.id) // 자기 자신은 상위기관으로 선택 불가
+      .filter((i) => !keyword || i.name.includes(keyword));
+  }, [allInstitutions, parentSearch, institution?.id]);
   const [form, setForm] = useState({
     name: institution?.name ?? "",
     type: (institution?.type ?? "시청") as InstitutionType,
+    parentInstitutionId: institution?.parentInstitutionId ?? "",
     region: institution?.region ?? "",
     address: institution?.address ?? "",
     phone: institution?.phone ?? "",
@@ -69,6 +90,7 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
     try {
       const payload = {
         ...form,
+        parentInstitutionId: form.parentInstitutionId || undefined,
         tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
         firstContactedAt: form.firstContactedAt ? Timestamp.fromDate(new Date(form.firstContactedAt)) : null,
         lastContactedAt: form.lastContactedAt ? Timestamp.fromDate(new Date(form.lastContactedAt)) : null,
@@ -99,6 +121,24 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
               <option key={t}>{t}</option>
             ))}
           </Select>
+        </Field>
+        <Field label="상위기관 (교육부→교육청→교육지원청 계층 등)">
+          <div className="space-y-1.5">
+            <Input
+              placeholder="이름으로 검색..."
+              value={parentSearch}
+              onChange={(e) => setParentSearch(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Select value={form.parentInstitutionId} onChange={(e) => set("parentInstitutionId", e.target.value)}>
+              <option value="">(없음 — 최상위 기관)</option>
+              {parentCandidates.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} ({i.type})
+                </option>
+              ))}
+            </Select>
+          </div>
         </Field>
         <Field label="지역">
           <Input required placeholder="예: 경기도 용인시" value={form.region} onChange={(e) => set("region", e.target.value)} />
