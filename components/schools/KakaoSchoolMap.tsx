@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useKakaoMapsLoader } from "@/lib/hooks/useKakaoMapsLoader";
 import { useSchoolsInBounds } from "@/lib/hooks/useSchoolsInBounds";
 import { haversineDistanceKm } from "@/lib/geo";
-import { SchoolSummaryDoc } from "@/types";
+import { isStalled } from "@/lib/public-pipeline";
+import { SchoolSummaryDoc, InstitutionDoc } from "@/types";
 
 /** 영업 상태를 4그룹으로 나눠 마커 "테두리" 색상으로 표시: 구축완료(초록) / 계약(파랑) / 미접촉(회색) / 진행중(주황) */
 function colorForStatus(status?: string): string {
@@ -30,12 +31,33 @@ function buildMarkerImage(kakao: any, statusColor: string, levelColor: string) {
   return new kakao.maps.MarkerImage(url, new kakao.maps.Size(30, 30), { offset: new kakao.maps.Point(15, 15) });
 }
 
-export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsChange?: (schools: SchoolSummaryDoc[]) => void }) {
+/** 관공서/교육행정기관 마커 — 학교(원형)와 구분되도록 다이아몬드(정사각형 45도 회전) 모양.
+ * 14일 이상 정체 중이면 빨간 테두리로 강조 (스펙 4번 정체 알림을 지도에서도 바로 보이게). */
+function buildInstitutionMarkerImage(kakao: any, stalled: boolean) {
+  const stroke = stalled ? "#E0483B" : "#FFFFFF";
+  const strokeWidth = stalled ? 3 : 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect x="6" y="6" width="16" height="16" fill="#7A5CF0" stroke="${stroke}" stroke-width="${strokeWidth}" transform="rotate(45 14 14)"/></svg>`;
+  const url = `data:image/svg+xml;base64,${btoa(svg)}`;
+  return new kakao.maps.MarkerImage(url, new kakao.maps.Size(28, 28), { offset: new kakao.maps.Point(14, 14) });
+}
+
+export function KakaoSchoolMap({
+  onVisibleSchoolsChange,
+  institutions,
+  onInstitutionClick,
+}: {
+  onVisibleSchoolsChange?: (schools: SchoolSummaryDoc[]) => void;
+  /** 관공서/교육행정기관도 같이 표시하고 싶을 때 전달 (스펙 14번, 방문 동선 화면 전용).
+   * 학교(수만 건)와 달리 규모가 작아(수백 건) bounds 기반 페이징 없이 통째로 받아 좌표 있는 것만 그린다. */
+  institutions?: InstitutionDoc[];
+  onInstitutionClick?: (institution: InstitutionDoc) => void;
+}) {
   const { ready, error, hasKey } = useKakaoMapsLoader();
   const { schools, loading, truncated, fetchBounds } = useSchoolsInBounds();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const clustererRef = useRef<any>(null);
+  const institutionMarkersRef = useRef<any[]>([]);
   const [radiusCenter, setRadiusCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [radiusKm, setRadiusKm] = useState(3);
 
@@ -95,6 +117,34 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
     clustererRef.current.addMarkers(markers);
     onVisibleSchoolsChange?.(visibleSchools);
   }, [schools, ready, radiusCenter, radiusKm, onVisibleSchoolsChange]);
+
+  // 관공서/교육행정기관 마커 — 클러스터러 없이 지도에 직접 얹는다 (수백 건 규모라 필요 없음)
+  useEffect(() => {
+    if (!ready || !mapInstance.current) return;
+    const { kakao } = window;
+
+    institutionMarkersRef.current.forEach((m) => m.setMap(null));
+    institutionMarkersRef.current = [];
+
+    if (!institutions || institutions.length === 0) return;
+
+    const newMarkers = institutions
+      .filter((i) => typeof i.lat === "number" && typeof i.lng === "number")
+      .map((i) => {
+        const marker = new kakao.maps.Marker({
+          position: new kakao.maps.LatLng(i.lat!, i.lng!),
+          image: buildInstitutionMarkerImage(kakao, isStalled(i)),
+          map: mapInstance.current,
+        });
+        kakao.maps.event.addListener(marker, "click", () => {
+          if (onInstitutionClick) onInstitutionClick(i);
+          else window.open(`/institutions/${i.id}`, "_blank");
+        });
+        return marker;
+      });
+
+    institutionMarkersRef.current = newMarkers;
+  }, [institutions, ready, onInstitutionClick]);
 
   function handleRadiusSearch() {
     if (!navigator.geolocation) {
@@ -179,6 +229,13 @@ export function KakaoSchoolMap({ onVisibleSchoolsChange }: { onVisibleSchoolsCha
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#1D4ED8" }} /> 고등학교</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#EC4899" }} /> 특수학교</span>
       </div>
+      {institutions && institutions.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-ink-500">
+          <span className="font-semibold text-ink-700">관공서/교육행정기관:</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 bg-violet-500" style={{ transform: "rotate(45deg)" }} /> 위치</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 border-2 border-status-danger bg-violet-500" style={{ transform: "rotate(45deg)" }} /> 14일+ 정체</span>
+        </div>
+      )}
     </div>
   );
 }

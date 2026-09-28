@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { orderBy } from "firebase/firestore";
-import { Plus, Phone, Mail, Search, Upload, FileDown, Loader2 } from "lucide-react";
+import { Plus, Phone, Mail, Search, Upload, FileDown, Loader2, MapPin } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
@@ -43,6 +43,47 @@ export default function InstitutionsPage() {
   const [keyword, setKeyword] = useState("");
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeProgress, setGeocodeProgress] = useState({ success: 0, failed: 0 });
+  const geocodeAfterIdRef = useRef<string | undefined>(undefined);
+
+  /**
+   * 좌표(위경도)가 없는 관공서를 전체 자동 순회하며 지오코딩한다 (스펙 14번 지도 표시용).
+   * app/schools/map/page.tsx의 "전체 자동 순회"와 같은 패턴 — 중단돼도 이어서 재시도 가능.
+   */
+  async function handleAutoGeocode() {
+    if (!firebaseUser) return;
+    setGeocoding(true);
+    let done = false;
+    let guard = 0;
+    try {
+      while (!done && guard < 200) {
+        guard += 1;
+        const token = await firebaseUser.getIdToken();
+        const res = await fetch("/api/institutions/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ afterId: geocodeAfterIdRef.current }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "지오코딩 실패");
+        setGeocodeProgress((prev) => ({ success: prev.success + json.success, failed: prev.failed + json.failed }));
+        geocodeAfterIdRef.current = json.lastId ?? geocodeAfterIdRef.current;
+        done = json.done;
+      }
+      if (done) {
+        alert("관공서 좌표 채우기가 끝났습니다. 방문동선 화면에서 지도에 표시됩니다.");
+        geocodeAfterIdRef.current = undefined;
+        setGeocodeProgress({ success: 0, failed: 0 });
+      } else {
+        alert("안전장치로 이번 실행을 멈췄습니다. 같은 버튼을 다시 누르면 이어서 진행됩니다.");
+      }
+    } catch (e: any) {
+      alert((e.message || "지오코딩 중 오류가 발생했습니다.") + " — 다시 누르면 중단된 지점부터 이어서 진행됩니다.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -104,6 +145,15 @@ export default function InstitutionsPage() {
             칸반보드
           </Button>
         </Link>
+        <Link href="/visit-planner">
+          <Button variant="secondary" size="sm">
+            <MapPin size={14} /> 방문동선
+          </Button>
+        </Link>
+        <Button variant="secondary" size="sm" onClick={handleAutoGeocode} disabled={geocoding}>
+          <MapPin size={14} />
+          {geocoding ? `좌표 채우는 중... (성공 ${geocodeProgress.success} · 실패 ${geocodeProgress.failed})` : "좌표 채우기 (지도용)"}
+        </Button>
         <Button variant="secondary" size="sm" onClick={downloadInstitutionTemplate}>
           <FileDown size={14} /> 템플릿
         </Button>
