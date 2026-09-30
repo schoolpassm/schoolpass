@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     // 커버하지 못하므로, 라우트 전체에 9초 상한을 걸어 그 안에서 항상 깔끔한 JSON으로 답한다.
     const work = (async () => {
       const rows = await fetchSchoolinfoRows(category, year, levelCode, sggCode, sidoCode);
-      const r = await applySchoolinfoRows(db, category, rows, regionHint);
+      const r = await applySchoolinfoRows(db, category, rows, regionHint, levelCode);
       return { ok: true, ...r, rowCount: rows.length };
     })();
 

@@ -23,6 +23,7 @@ interface SyncLogDoc {
   year: number;
   sidoName: string;
   matched: number;
+  created?: number;
   unmatched: number;
   failedChunks: number;
   createdByName: string;
@@ -32,6 +33,8 @@ interface SyncLogDoc {
 interface Totals {
   matched: number;
   matchedByName: number;
+  created: number;
+  createdSample: string[];
   unmatched: number;
   rowCount: number;
   failedChunks: number;
@@ -75,7 +78,15 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json?.error || "청크 동기화 실패");
-    return json as { matched: number; matchedByName: number; unmatched: number; rowCount: number; unmatchedSample: string[] };
+    return json as {
+      matched: number;
+      matchedByName: number;
+      created: number;
+      createdSample: string[];
+      unmatched: number;
+      rowCount: number;
+      unmatchedSample: string[];
+    };
   }
 
   /** 시/도 하나에 대한 전체 작업(레벨×시군구)을 처리하고 누계에 더한다 */
@@ -110,10 +121,14 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
         if (!r) continue;
         totals.matched += r.matched;
         totals.matchedByName += r.matchedByName;
+        totals.created += r.created ?? 0;
         totals.unmatched += r.unmatched;
         totals.rowCount += r.rowCount;
         if (r.unmatchedSample && totals.unmatchedSample.length < 15) {
           totals.unmatchedSample.push(...r.unmatchedSample.slice(0, 15 - totals.unmatchedSample.length));
+        }
+        if (r.createdSample && totals.createdSample.length < 15) {
+          totals.createdSample.push(...r.createdSample.slice(0, 15 - totals.createdSample.length));
         }
       }
       overallDoneRef.done += Math.min(CONCURRENCY, batch.length);
@@ -141,7 +156,16 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
     const overallDoneRef = { done: 0, total: totalTasks };
     setProgress({ done: 0, total: totalTasks });
 
-    const totals: Totals = { matched: 0, matchedByName: 0, unmatched: 0, rowCount: 0, failedChunks: 0, unmatchedSample: [] };
+    const totals: Totals = {
+      matched: 0,
+      matchedByName: 0,
+      created: 0,
+      createdSample: [],
+      unmatched: 0,
+      rowCount: 0,
+      failedChunks: 0,
+      unmatchedSample: [],
+    };
 
     try {
       for (const [code, name] of targetSidos) {
@@ -157,6 +181,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
           year,
           sidoName: isAllSido ? "전국" : targetSidos[0]?.[1] ?? "",
           matched: totals.matched,
+          created: totals.created,
           unmatched: totals.unmatched,
           failedChunks: totals.failedChunks,
           createdByName: userDoc?.name ?? "",
@@ -244,17 +269,29 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
 
         {result && (
           <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">
-            동기화 완료 — 매칭 {result.matched}건 반영 (이름매칭 {result.matchedByName}건), 미매칭 {result.unmatched}건, 원본{" "}
+            동기화 완료 — 매칭 {result.matched}건 반영 (이름매칭 {result.matchedByName}건)
+            {result.created > 0 && `, 신규 학교 ${result.created}건 생성`}, 미매칭 {result.unmatched}건, 원본{" "}
             {result.rowCount}건
             {result.failedChunks > 0 && ` · 실패한 요청 ${result.failedChunks}건`}
           </div>
         )}
+        {result && result.createdSample.length > 0 && (
+          <div className="rounded-lg bg-primary-50 p-3 text-[11px] text-primary-700">
+            <p className="mb-1 font-medium">새로 생성된 학교 샘플 (최대 15개):</p>
+            <p>{result.createdSample.join(", ")}</p>
+            <p className="mt-1 text-primary-600">
+              "학생수·학급수" 동기화에서만 DB에 없는 학교를 자동 생성합니다. 상태는 "신규", 등급은 "C"로
+              들어가며, 담당자·전화번호 등은 학교 목록에서 직접 채워주세요.
+            </p>
+          </div>
+        )}
         {result && result.unmatchedSample.length > 0 && (
           <div className="rounded-lg bg-amber-50 p-3 text-[11px] text-amber-700">
-            <p className="mb-1 font-medium">매칭 안 된 학교명 샘플 (최대 15개):</p>
+            <p className="mb-1 font-medium">매칭도 생성도 안 된 학교명 샘플 (최대 15개):</p>
             <p>{result.unmatchedSample.join(", ")}</p>
             <p className="mt-1 text-amber-600">
-              보통 학교명 표기 차이(공백/괄호 등) 또는 아직 DB에 없는 학교인 경우입니다.
+              동명 학교가 같은 지역에 여럿이라 안전하게 건너뛴 경우입니다 (또는 "학생수·학급수" 외
+              카테고리라 자동 생성 대상이 아닌 경우).
             </p>
           </div>
         )}
@@ -273,7 +310,7 @@ export function StudentCountSyncModal({ open, onClose }: { open: boolean; onClos
                     {log.categoryLabel} · {log.sidoName} · {log.year}년
                   </span>
                   <span>
-                    매칭 {log.matched}건 · {formatDate(log.createdAt, true)}
+                    매칭 {log.matched}건{log.created ? ` · 신규 ${log.created}건` : ""} · {formatDate(log.createdAt, true)}
                   </span>
                 </li>
               ))}

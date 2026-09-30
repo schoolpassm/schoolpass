@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
   const db = getAdminDb();
   let matched = 0;
   let matchedByName = 0;
+  let created = 0;
   let unmatched = 0;
   let districtsAttempted = 0;
   let districtsSucceeded = 0;
@@ -100,9 +101,10 @@ export async function POST(req: NextRequest) {
       });
       const allRows = districtResults.flat();
       totalRowsFetched += allRows.length;
-      const r = await applySchoolinfoRows(db, category, allRows, regionHint);
+      const r = await applySchoolinfoRows(db, category, allRows, regionHint, levelCode);
       matched += r.matched;
       matchedByName += r.matchedByName;
+      created += r.created;
       unmatched += r.unmatched;
     } catch (err) {
       console.error(`schoolinfo sync failed [${category}] for level ${levelCode}`, err);
@@ -116,6 +118,7 @@ export async function POST(req: NextRequest) {
     category,
     matched,
     matchedByName,
+    created,
     unmatched,
     failedLevels,
     debug: { districtsAttempted, districtsSucceeded, totalRowsFetched, districtSampleError },
