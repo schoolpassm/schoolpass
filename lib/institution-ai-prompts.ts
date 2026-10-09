@@ -1,6 +1,17 @@
 import { AiModel } from "@/lib/ai";
 
-export type InstitutionAiAction = "call_script" | "email" | "sms" | "proposal" | "objection_handling" | "expected_questions" | "next_action";
+export type InstitutionAiAction =
+  | "call_script"
+  | "email"
+  | "sms"
+  | "proposal"
+  | "objection_handling"
+  | "expected_questions"
+  | "next_action"
+  // --- ZeroPass 통합 확장 (2026.10 지시서 6번) ---
+  | "post_demo_followup" // 시연 후 후속 이메일
+  | "budget_schedule" // 예산 편성 및 구매 일정 정리
+  | "contract_likelihood"; // 계약 가능성 판단 (근거 + 불확실성 함께 표시)
 
 export interface InstitutionContext {
   name: string;
@@ -22,6 +33,19 @@ export interface InstitutionContext {
   publicStage?: string;
   daysInPublicStage?: number | null;
   isStalled?: boolean; // 현재 publicStage에서 14일 이상 정체 중인지
+  // --- ZeroPass 통합 확장 (2026.10 지시서 2·6번) — 있으면 함께 근거로 제시, 없으면 "정보 없음"으로 솔직히 표시 ---
+  product?: string; // SchoolPass / ZeroPass / 두 제품 모두
+  salesStage?: string; // 통합 17단계 파이프라인 현재 단계
+  daysInSalesStage?: number | null;
+  isSalesStalled?: boolean;
+  visitorManagementMethod?: string;
+  operationalPainPoints?: string;
+  adoptionPriority?: string;
+  purchaseMethod?: string;
+  securityReviewStatus?: string;
+  privacyReviewStatus?: string;
+  pilotRunNeeded?: boolean;
+  nextAction?: string; // CRM에 저장된 "다음 행동" 필드 값 (있으면 근거로 인용)
 }
 
 export function modelForInstitutionAction(action: InstitutionAiAction): AiModel {
@@ -66,6 +90,19 @@ function buildContextBlock(ctx: InstitutionContext): string {
     ctx.nextContactDueAt ? `- 다음 접촉 예정일: ${ctx.nextContactDueAt}` : "",
     ctx.expectedAdoptionPeriod ? `- 예상 도입 시기: ${ctx.expectedAdoptionPeriod}` : "",
     ctx.recentActivitySummaries.length > 0 ? `- 최근 활동: ${ctx.recentActivitySummaries.join(" / ")}` : "",
+    // --- ZeroPass 통합 확장 (2026.10) ---
+    ctx.product ? `- 제품: ${ctx.product}` : "- 제품: 아직 확정 안 됨(검토 필요) — 제품을 단정해서 말하지 말 것",
+    ctx.salesStage
+      ? `- 통합 영업 단계: "${ctx.salesStage}"${ctx.daysInSalesStage != null ? ` (이 단계에 머문 지 ${ctx.daysInSalesStage}일)` : ""}${ctx.isSalesStalled ? " — ⚠ 14일 이상 정체 중" : ""}`
+      : "",
+    ctx.visitorManagementMethod ? `- 현재 방문자/출입 관리 방식: ${ctx.visitorManagementMethod}` : "",
+    ctx.operationalPainPoints ? `- 현재 운영상 불편: ${ctx.operationalPainPoints}` : "",
+    ctx.adoptionPriority ? `- 도입 필요성 및 우선순위: ${ctx.adoptionPriority}` : "",
+    ctx.purchaseMethod ? `- 구매·계약 방식: ${ctx.purchaseMethod}` : "",
+    ctx.securityReviewStatus ? `- 정보보안 검토 상태: ${ctx.securityReviewStatus}` : "",
+    ctx.privacyReviewStatus ? `- 개인정보 처리 검토 상태: ${ctx.privacyReviewStatus}` : "",
+    ctx.pilotRunNeeded != null ? `- 시범 운영 필요 여부: ${ctx.pilotRunNeeded ? "필요" : "불필요/미확인"}` : "",
+    ctx.nextAction ? `- CRM에 기록된 다음 행동: ${ctx.nextAction}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -149,6 +186,43 @@ export function buildInstitutionPrompt(
 - 형식:
 추천 액션: [액션]
 근거: [위 정보 중 구체적 근거]`,
+      };
+
+    // --- ZeroPass 통합 확장 (2026.10 지시서 6번) ---
+    case "post_demo_followup":
+      return {
+        system: SYSTEM_PROMPT,
+        maxTokens: 700,
+        prompt: `${base}\n\n이 기관에 시연(데모)을 진행한 직후 보낼 후속 이메일을 작성해줘.
+- 제목 + 본문 형식
+- 시연 때 다룬 내용을 일반적으로 요약(구체적 일시·참석자 등은 위 정보에 없으면 지어내지 말고 "지난 시연에서" 정도로만 언급)
+- 다음 단계(견적서 전달, 내부 검토 일정 확인 등)를 제안
+- 담당자 성함이 파악되어 있으면 호칭에 사용, 없으면 "담당자님께"로 시작
+- 350자 이내`,
+      };
+
+    case "budget_schedule":
+      return {
+        system: SYSTEM_PROMPT,
+        maxTokens: 500,
+        prompt: `${base}\n\n위 [관공서 정보]의 예산 상태·구매 방식 정보만 근거로, 이 기관의 예산 편성 및 구매(조달) 일정을 정리해줘.
+- 정보가 없는 항목은 "정보 없음"이라고 명시할 것 — 공공기관 예산편성 시기를 일반론으로 지어내지 말 것
+- 형식:
+현재 예산 상태: [위 정보 그대로, 없으면 "정보 없음"]
+구매·계약 방식: [위 정보 그대로, 없으면 "정보 없음"]
+제안하는 다음 확인사항: [담당자에게 물어봐야 할 구체적 질문 1~2개]`,
+      };
+
+    case "contract_likelihood":
+      return {
+        system: SYSTEM_PROMPT,
+        maxTokens: 500,
+        prompt: `${base}\n\n위 [관공서 정보]만 근거로 이 기관의 계약 가능성을 판단해줘. 반드시 아래 형식을 지키고, 근거와 불확실성을 분리해서 제시해줘(지시서 요구사항: 추정을 확정처럼 말하지 말 것).
+형식:
+판단: [높음/중간/낮음/판단보류] 중 하나
+근거: [위 정보에 실제로 있는 사실만 1~2개 — 예: 통합 영업 단계, 예산 상태, 보안검토 상태, 정체일수 등]
+불확실성: [이 판단에서 확인되지 않은 부분, 예: "예산 확보 여부 미확인", "보안검토 담당자 미파악" 등 — 반드시 1개 이상 명시]
+이것은 AI의 추정이며 확정된 계약 여부가 아님을 마지막 줄에 명시할 것.`,
       };
   }
 }

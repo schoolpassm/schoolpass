@@ -192,6 +192,17 @@ export async function addSchoolQuote(schoolId: string, quote: Partial<SchoolQuot
   });
 }
 
+/** institutions/{id}/quotes용 — schools와 동일한 모양이라 컬렉션 경로만 다르게 받는 범용 버전.
+ * ZeroPass 통합 확장(2026.10)에서 QuotesTab 컴포넌트를 그대로 재사용하기 위해 추가. */
+export async function addQuoteAt(basePath: string, quote: { amount: number; itemSummary: string; status?: string }) {
+  return addDoc(collection(db, basePath, "quotes"), {
+    ...quote,
+    status: quote.status ?? "draft",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 /** 엑셀 일괄 업로드: 200건 단위로 배치 커밋 (schools_detail + schools_summary 동시 기록) */
 export async function bulkImportSchools(rows: SchoolRow[], uid: string) {
   const chunks: SchoolRow[][] = [];

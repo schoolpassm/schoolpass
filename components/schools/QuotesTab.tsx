@@ -4,7 +4,7 @@ import { useState } from "react";
 import { orderBy } from "firebase/firestore";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { SchoolQuoteDoc } from "@/types";
-import { addSchoolQuote } from "@/lib/api/schools";
+import { addQuoteAt } from "@/lib/api/schools";
 import { formatDate, cn } from "@/lib/utils";
 import { formatKRW } from "@/lib/commission";
 import { Button } from "@/components/ui/Button";
@@ -23,10 +23,11 @@ const STATUS_LABEL: Record<SchoolQuoteDoc["status"], string> = {
   rejected: "거절",
 };
 
-export function QuotesTab({ schoolId }: { schoolId: string }) {
-  const { data: quotes, loading } = useCollection<SchoolQuoteDoc>(`schools_detail/${schoolId}/quotes`, [
-    orderBy("createdAt", "desc"),
-  ]);
+/** schoolId를 주면 기존처럼 schools_detail 하위를, basePath를 주면(예: "institutions/abc") 그 경로 하위를 쓴다.
+ * ZeroPass 통합 확장(2026.10)에서 institutions 상세페이지의 견적 탭에 그대로 재사용하기 위해 범용화. */
+export function QuotesTab({ schoolId, basePath }: { schoolId?: string; basePath?: string }) {
+  const path = basePath ?? `schools_detail/${schoolId}`;
+  const { data: quotes, loading } = useCollection<SchoolQuoteDoc>(`${path}/quotes`, [orderBy("createdAt", "desc")]);
   const [amount, setAmount] = useState("");
   const [itemSummary, setItemSummary] = useState("");
   const [saving, setSaving] = useState(false);
@@ -35,7 +36,7 @@ export function QuotesTab({ schoolId }: { schoolId: string }) {
     if (!amount) return;
     setSaving(true);
     try {
-      await addSchoolQuote(schoolId, {
+      await addQuoteAt(path, {
         amount: Number(amount),
         itemSummary,
         status: "draft",

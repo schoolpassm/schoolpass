@@ -17,7 +17,7 @@ export function ContractTable({ contracts }: { contracts: ContractDoc[] }) {
       <table className="w-full min-w-[1150px] text-sm">
         <thead>
           <tr className="border-b border-surface-border bg-surface-muted text-left text-xs text-ink-500">
-            <th className="px-4 py-3 font-medium">학교</th>
+            <th className="px-4 py-3 font-medium">학교/기관</th>
             <th className="px-4 py-3 font-medium">제품</th>
             <th className="px-4 py-3 font-medium">계약금액</th>
             <th className="px-4 py-3 font-medium">설치금액</th>
@@ -32,7 +32,10 @@ export function ContractTable({ contracts }: { contracts: ContractDoc[] }) {
         <tbody>
           {contracts.map((c) => (
             <tr key={c.id} className="border-b border-surface-border last:border-0 hover:bg-surface-muted/60">
-              <td className="px-4 py-3 font-medium text-ink-900">{c.schoolName}</td>
+              <td className="px-4 py-3 font-medium text-ink-900">
+                {c.schoolName || c.institutionName || "-"}
+                {c.institutionId && <span className="ml-1.5 text-[10px] font-normal text-violet-500">관공서등</span>}
+              </td>
               <td className="px-4 py-3 text-ink-500">{PRODUCT_LABEL[c.product] ?? "-"}</td>
               <td className="px-4 py-3 text-ink-700">{formatKRW(c.contractAmount)}</td>
               <td className="px-4 py-3 text-ink-500">{c.installAmount ? formatKRW(c.installAmount) : "-"}</td>

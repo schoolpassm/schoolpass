@@ -103,6 +103,12 @@ export interface SchoolDoc extends BaseDoc {
   facilitySafetyOk?: boolean; // 시설안전 점검 이상없음 여부
   schoolLandArea?: number; // 학교용지 면적 합계(㎡)
   healthRoomUsageCount?: number; // 연간 보건실 이용건수
+  // --- ZeroPass 통합 확장 (2026.10 지시서) — 학교는 사실상 항상 SchoolPass이므로 product는 institutions만 사용.
+  // 통합 대시보드/파이프라인 집계를 institutions와 같은 방식으로 다루기 위해 salesStage만 병행 추가. ---
+  salesStage?: UnifiedPipelineStage; // 비어있으면 기존 status를 기준으로 화면에서 매핑해 표시
+  salesStageEnteredAt?: Timestamp | null;
+  securityReviewStatus?: ReviewStatus; // 정보보안 검토 상태 (민간 위탁운영 학교 등 드물게 필요)
+  privacyReviewStatus?: ReviewStatus; // 개인정보 처리 검토 상태
 }
 
 /**
@@ -268,8 +274,13 @@ export interface CommissionBreakdown {
 }
 
 export interface ContractDoc extends BaseDoc {
+  // ZeroPass 통합 확장(2026.10): 관공서/민간기업 등 institutions 계약도 이 컬렉션에 같이 기록할 수 있도록
+  // institutionId를 옵션으로 추가. 기존 학교 계약은 schoolId만 쓰는 방식 그대로 유지(하위호환).
+  // 반드시 둘 중 하나는 채워져야 한다 — schoolId는 "" (빈 문자열)로 남겨 기존 통계 쿼리(where schoolId==) 안전.
   schoolId: string;
   schoolName: string; // 비정규화
+  institutionId?: string; // institutions/{id} 참조 (ZeroPass 쪽 계약일 때만)
+  institutionName?: string; // 비정규화
   region: string; // 비정규화 (통계용)
   contractAmount: number; // 계약금액
   installAmount?: number; // 설치금액
@@ -365,12 +376,100 @@ export type InstitutionType =
   // --- SchoolPass 교육행정 계층 (2026.09 공통 CRM 엔진 확장으로 추가) ---
   | "교육부"
   | "교육청"
-  | "교육지원청";
+  | "교육지원청"
+  // --- ZeroPass 통합 확장 (2026.10, 지시서 2번 고객유형) — 기존 값은 그대로 두고 추가만 함 ---
+  | "중앙행정기관"
+  | "공기업·공단"
+  | "공공시설"
+  | "민간기업"
+  | "제조공장"
+  | "물류센터"
+  | "연구소";
 
 /** 교육행정 계층 여부 판별 헬퍼 (ZeroPass 관공서 타입과 구분할 때 사용) */
 export const EDU_HIERARCHY_TYPES: InstitutionType[] = ["교육부", "교육청", "교육지원청"];
 export type BudgetStatus = "미확인" | "예산없음" | "신규예산필요" | "예산검토" | "예산편성예정" | "예산확보" | "구매진행";
 export type InterestLevel = "높음" | "보통" | "낮음";
+
+// ----------------------------------------------------------------------------
+// ZeroPass 통합 확장 (2026.10 지시서) — 제품 구분, 신규 CRM 필드, 통합 파이프라인.
+// 전부 optional 추가 필드/별도 타입이라 기존 데이터·화면에 영향 없음 (지시서 8번 원칙).
+// ----------------------------------------------------------------------------
+
+/** 지시서 2번 "제품" 필드. 학교(schools)는 사실상 항상 SchoolPass라 UI에서 고정 처리하고,
+ * institutions(관공서/공공기관/민간기업 등)에서만 실질적으로 선택된다. */
+export type SalesProduct = "school_pass" | "zero_pass" | "both";
+export const SALES_PRODUCT_LABELS: Record<SalesProduct, string> = {
+  school_pass: "SchoolPass",
+  zero_pass: "ZeroPass",
+  both: "두 제품 모두",
+};
+
+export type VisitorManagementMethod = "수기대장" | "엑셀" | "기존시스템" | "미확인";
+export type ReviewStatus = "검토전" | "검토중" | "검토완료" | "보류";
+export type PurchaseMethod = "수의계약" | "입찰" | "조달청나라장터" | "기타" | "미확인";
+
+/** 지시서 3번 통합 16단계 파이프라인. 기존 SchoolStatus(9단계)·PublicPipelineStage(16단계)는
+ * 하위호환을 위해 그대로 두고, 이 필드는 새 "salesStage"로 병행 도입한다(지시서 8번: 기존 데이터/
+ * 기능 보존). 비어있으면 화면에서 "신규"로 취급한다(일괄 백필 불필요 — 기존 publicStage 도입 때와 동일 패턴). */
+export type UnifiedPipelineStage =
+  | "신규"
+  | "담당자확인"
+  | "전화완료"
+  | "자료발송"
+  | "방문예정"
+  | "시연예정"
+  | "시연완료"
+  | "견적"
+  | "내부검토협의"
+  | "예산검토"
+  | "보안검토"
+  | "조달검토"
+  | "계약"
+  | "설치구축"
+  | "운영중"
+  | "보류"
+  | "실패";
+
+export const UNIFIED_PIPELINE_STAGES: UnifiedPipelineStage[] = [
+  "신규",
+  "담당자확인",
+  "전화완료",
+  "자료발송",
+  "방문예정",
+  "시연예정",
+  "시연완료",
+  "견적",
+  "내부검토협의",
+  "예산검토",
+  "보안검토",
+  "조달검토",
+  "계약",
+  "설치구축",
+  "운영중",
+];
+/** 칸반/대시보드 집계에서 제외하는 종료 단계 (보류/실패는 별도 배지로만 표시) */
+export const UNIFIED_PIPELINE_TERMINAL_STAGES: UnifiedPipelineStage[] = ["보류", "실패"];
+
+export const UNIFIED_PIPELINE_STAGE_LABELS: Record<UnifiedPipelineStage, string> = {
+  신규: "신규",
+  담당자확인: "담당자 확인",
+  전화완료: "전화 완료",
+  자료발송: "자료 발송",
+  방문예정: "방문 예정",
+  시연예정: "시연 예정",
+  시연완료: "시연 완료",
+  견적: "견적",
+  내부검토협의: "내부 검토·협의",
+  예산검토: "예산 검토",
+  보안검토: "보안 검토",
+  조달검토: "조달 검토",
+  계약: "계약",
+  설치구축: "설치·구축",
+  운영중: "운영 중",
+  보류: "보류",
+  실패: "실패",
+};
 
 export interface InstitutionDoc extends BaseDoc {
   name: string;
@@ -412,6 +511,18 @@ export interface InstitutionDoc extends BaseDoc {
   // publicStage가 비어있는 기존 기관은 화면에서 첫 단계("조사")로 취급한다 (일괄 백필 불필요).
   publicStage?: PublicPipelineStage;
   stageEnteredAt?: Timestamp | null; // 현재 publicStage에 진입한 시각 — 단계별 체류일수·14일 정체 판정 기준
+  // --- ZeroPass 통합 확장 (2026.10 지시서) ---
+  product?: SalesProduct; // 미설정 시 UI에서 "검토 필요"로 표시 (임의 추정값 확정 표시 금지, 지시서 7번)
+  salesStage?: UnifiedPipelineStage; // 통합 16단계 파이프라인 (지시서 3번). 비어있으면 "신규"로 취급.
+  salesStageEnteredAt?: Timestamp | null;
+  visitorManagementMethod?: VisitorManagementMethod; // 현재 방문자 관리 방식
+  operationalPainPoints?: string; // 현재 운영상 불편
+  adoptionPriority?: string; // 도입 필요성 및 우선순위 (자유 입력)
+  purchaseMethod?: PurchaseMethod; // 구매·계약 방식
+  securityReviewStatus?: ReviewStatus; // 정보보안 검토 상태
+  privacyReviewStatus?: ReviewStatus; // 개인정보 처리 검토 상태
+  pilotRunNeeded?: boolean; // 시범 운영 필요 여부
+  nextAction?: string; // 다음 행동 (자유 입력, AI 추천도 이 필드에 반영 가능)
 }
 
 // ----------------------------------------------------------------------------
@@ -481,6 +592,64 @@ export interface InstitutionDocumentDoc extends BaseDoc {
   institutionResponded?: boolean; // 기관의 대응 여부
   contactReply?: string; // 담당자 답변
   followUp?: string; // 후속조치
+}
+
+// ----------------------------------------------------------------------------
+// institutions/{id}/quotes, institutions/{id}/files — ZeroPass 통합 확장 (지시서 5번:
+// "견적서 및 계약서", "제안서·소개서·시연자료"). schools의 SchoolQuoteDoc/SchoolFileDoc와
+// 동일한 모양으로 둬서 UI 컴포넌트를 그대로 재사용할 수 있게 한다.
+// ----------------------------------------------------------------------------
+export interface InstitutionQuoteDoc extends BaseDoc {
+  amount: number;
+  itemSummary: string;
+  validUntil?: Timestamp | null;
+  fileUrl?: string;
+  status: "draft" | "sent" | "accepted" | "rejected";
+}
+
+export type InstitutionFileCategory = "brochure" | "photo" | "proposal" | "contract" | "demo_material" | "etc";
+
+export interface InstitutionFileDoc extends BaseDoc {
+  category: InstitutionFileCategory;
+  fileName: string;
+  url: string;
+  storagePath: string;
+  sizeBytes?: number;
+  uploadedByUid: string;
+}
+
+// ----------------------------------------------------------------------------
+// {collection}/{id}/access_logs — 지시서 7번 "고객 정보 열람·수정 이력".
+// institutions와 schools 양쪽 상세페이지에서 공통으로 쌓는다 (지시서 15번 "공통 CRM 엔진" 원칙).
+// ----------------------------------------------------------------------------
+export type AccessAction = "view" | "update" | "export";
+
+export interface AccessLogDoc extends BaseDoc {
+  action: AccessAction;
+  targetCollection: "institutions" | "schools_detail";
+  targetId: string;
+  targetName?: string; // 비정규화(목록 렌더링용)
+  changedFields?: string[]; // action === "update"일 때만, 어떤 필드가 바뀌었는지
+  actorUid: string;
+  actorName: string;
+}
+
+// ----------------------------------------------------------------------------
+// settings/system — 지시서 7번 "개인정보 및 보안": 보유기간·삭제정책 문서화,
+// 외부 AI(Claude API) 전송 데이터 범위 설정. 단일 문서(id="system")로 관리.
+// ----------------------------------------------------------------------------
+export interface AiDataScopeSettings {
+  includeContactInfo: boolean; // 담당자 성함/연락처를 AI 프롬프트에 포함할지
+  includeBudgetInfo: boolean; // 예산/계약금액 정보를 AI 프롬프트에 포함할지
+  includeNotes: boolean; // 메모/활동기록 요약을 AI 프롬프트에 포함할지
+}
+
+export interface SystemSettingsDoc {
+  id: "system";
+  dataRetentionPolicy?: string; // 보유기간 및 삭제정책 (자유 입력 텍스트, 관리자가 직접 기술)
+  aiDataScope: AiDataScopeSettings;
+  updatedAt: Timestamp | null;
+  updatedByName?: string;
 }
 
 // ----------------------------------------------------------------------------

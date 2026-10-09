@@ -3,6 +3,8 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { callClaude } from "@/lib/ai";
 import { buildInstitutionPrompt, modelForInstitutionAction, InstitutionAiAction, InstitutionContext } from "@/lib/institution-ai-prompts";
 import { getPublicStage, getDaysInStage, isStalled } from "@/lib/public-pipeline";
+import { getSalesStage, getDaysInSalesStage, isSalesStalled } from "@/lib/unified-pipeline";
+import { SALES_PRODUCT_LABELS } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,6 +35,10 @@ const VALID_ACTIONS: InstitutionAiAction[] = [
   "objection_handling",
   "expected_questions",
   "next_action",
+  // --- ZeroPass 통합 확장 (2026.10) ---
+  "post_demo_followup",
+  "budget_schedule",
+  "contract_likelihood",
 ];
 
 export async function POST(req: NextRequest) {
@@ -102,6 +108,19 @@ export async function POST(req: NextRequest) {
       daysInPublicStage: getDaysInStage(inst),
       isStalled: isStalled(inst),
       recentActivitySummaries,
+      // --- ZeroPass 통합 확장 (2026.10) ---
+      product: inst.product ? SALES_PRODUCT_LABELS[inst.product as keyof typeof SALES_PRODUCT_LABELS] : undefined,
+      salesStage: getSalesStage(inst),
+      daysInSalesStage: getDaysInSalesStage(inst),
+      isSalesStalled: isSalesStalled(inst),
+      visitorManagementMethod: inst.visitorManagementMethod,
+      operationalPainPoints: inst.operationalPainPoints,
+      adoptionPriority: inst.adoptionPriority,
+      purchaseMethod: inst.purchaseMethod,
+      securityReviewStatus: inst.securityReviewStatus,
+      privacyReviewStatus: inst.privacyReviewStatus,
+      pilotRunNeeded: inst.pilotRunNeeded,
+      nextAction: inst.nextAction,
     };
 
     const { system, prompt, maxTokens } = buildInstitutionPrompt(action, ctx);

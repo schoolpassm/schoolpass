@@ -8,7 +8,19 @@ import { Button } from "@/components/ui/Button";
 import { createInstitution, updateInstitution } from "@/lib/api/institutions";
 import { useAuth } from "@/lib/auth-context";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { BudgetStatus, InstitutionDoc, InstitutionType, InterestLevel, SchoolGrade, SchoolStatus } from "@/types";
+import {
+  BudgetStatus,
+  InstitutionDoc,
+  InstitutionType,
+  InterestLevel,
+  PurchaseMethod,
+  ReviewStatus,
+  SalesProduct,
+  SALES_PRODUCT_LABELS,
+  SchoolGrade,
+  SchoolStatus,
+  VisitorManagementMethod,
+} from "@/types";
 
 const TYPES: InstitutionType[] = [
   "시청",
@@ -21,11 +33,23 @@ const TYPES: InstitutionType[] = [
   "교육부",
   "교육청",
   "교육지원청",
+  // --- ZeroPass 통합 확장 (2026.10) ---
+  "중앙행정기관",
+  "공기업·공단",
+  "공공시설",
+  "민간기업",
+  "제조공장",
+  "물류센터",
+  "연구소",
 ];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료"];
 const GRADES: SchoolGrade[] = ["A", "B", "C", "D"];
 const BUDGET_STATUSES: BudgetStatus[] = ["미확인", "예산없음", "신규예산필요", "예산검토", "예산편성예정", "예산확보", "구매진행"];
 const INTEREST_LEVELS: InterestLevel[] = ["높음", "보통", "낮음"];
+const PRODUCTS: SalesProduct[] = ["school_pass", "zero_pass", "both"];
+const VISITOR_METHODS: VisitorManagementMethod[] = ["수기대장", "엑셀", "기존시스템", "미확인"];
+const REVIEW_STATUSES: ReviewStatus[] = ["검토전", "검토중", "검토완료", "보류"];
+const PURCHASE_METHODS: PurchaseMethod[] = ["수의계약", "입찰", "조달청나라장터", "기타", "미확인"];
 
 function toDateInput(ts?: Timestamp | null): string {
   if (!ts) return "";
@@ -77,6 +101,16 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
     expectedContractAmount: institution?.expectedContractAmount ? String(institution.expectedContractAmount) : "",
     tags: institution?.tags?.join(", ") ?? "",
     note: institution?.note ?? "",
+    // --- ZeroPass 통합 확장 (2026.10) ---
+    product: institution?.product ?? "",
+    visitorManagementMethod: institution?.visitorManagementMethod ?? "",
+    operationalPainPoints: institution?.operationalPainPoints ?? "",
+    adoptionPriority: institution?.adoptionPriority ?? "",
+    purchaseMethod: institution?.purchaseMethod ?? "",
+    securityReviewStatus: institution?.securityReviewStatus ?? "",
+    privacyReviewStatus: institution?.privacyReviewStatus ?? "",
+    pilotRunNeeded: institution?.pilotRunNeeded ?? false,
+    nextAction: institution?.nextAction ?? "",
   });
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -97,6 +131,11 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
         nextContactDueAt: form.nextContactDueAt ? Timestamp.fromDate(new Date(form.nextContactDueAt)) : null,
         expectedProjectAmount: Number(form.expectedProjectAmount) || undefined,
         expectedContractAmount: Number(form.expectedContractAmount) || undefined,
+        product: (form.product || undefined) as SalesProduct | undefined,
+        visitorManagementMethod: (form.visitorManagementMethod || undefined) as VisitorManagementMethod | undefined,
+        purchaseMethod: (form.purchaseMethod || undefined) as PurchaseMethod | undefined,
+        securityReviewStatus: (form.securityReviewStatus || undefined) as ReviewStatus | undefined,
+        privacyReviewStatus: (form.privacyReviewStatus || undefined) as ReviewStatus | undefined,
       };
       if (isEdit && institution) {
         await updateInstitution(institution.id, payload);
@@ -148,6 +187,87 @@ export function InstitutionFormModal({ open, onClose, institution }: Props) {
         </Field>
         <Field label="주소">
           <Input value={form.address} onChange={(e) => set("address", e.target.value)} className="sm:col-span-2" />
+        </Field>
+
+        <div className="sm:col-span-2 mt-1 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-ink-700">제품 및 도입 현황 (ZeroPass 통합 확장)</p>
+        </div>
+        <Field label="제품">
+          <Select value={form.product} onChange={(e) => set("product", e.target.value)}>
+            <option value="">검토 필요 (미확인)</option>
+            {PRODUCTS.map((p) => (
+              <option key={p} value={p}>
+                {SALES_PRODUCT_LABELS[p]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="현재 방문자 관리 방식">
+          <Select value={form.visitorManagementMethod} onChange={(e) => set("visitorManagementMethod", e.target.value)}>
+            <option value="">미확인</option>
+            {VISITOR_METHODS.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="현재 운영상 불편">
+          <Input
+            placeholder="예: 외부인 출입기록이 수기라 조회가 안 됨"
+            value={form.operationalPainPoints}
+            onChange={(e) => set("operationalPainPoints", e.target.value)}
+            className="sm:col-span-2"
+          />
+        </Field>
+        <Field label="도입 필요성 및 우선순위">
+          <Input
+            placeholder="예: 보안 강화 1순위 과제로 선정됨"
+            value={form.adoptionPriority}
+            onChange={(e) => set("adoptionPriority", e.target.value)}
+            className="sm:col-span-2"
+          />
+        </Field>
+        <Field label="구매·계약 방식">
+          <Select value={form.purchaseMethod} onChange={(e) => set("purchaseMethod", e.target.value)}>
+            <option value="">미확인</option>
+            {PURCHASE_METHODS.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="시범 운영 필요 여부">
+          <label className="flex h-10 items-center gap-2 text-sm text-ink-700">
+            <input
+              type="checkbox"
+              checked={form.pilotRunNeeded}
+              onChange={(e) => set("pilotRunNeeded", e.target.checked)}
+              className="h-4 w-4 accent-primary-500"
+            />
+            시범 운영(PoC) 필요
+          </label>
+        </Field>
+        <Field label="정보보안 검토 상태">
+          <Select value={form.securityReviewStatus} onChange={(e) => set("securityReviewStatus", e.target.value)}>
+            <option value="">검토 필요 (미확인)</option>
+            {REVIEW_STATUSES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="개인정보 처리 검토 상태">
+          <Select value={form.privacyReviewStatus} onChange={(e) => set("privacyReviewStatus", e.target.value)}>
+            <option value="">검토 필요 (미확인)</option>
+            {REVIEW_STATUSES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="다음 행동">
+          <Input
+            placeholder="예: 보안담당관에게 정보보안 검토 요청 이메일 발송"
+            value={form.nextAction}
+            onChange={(e) => set("nextAction", e.target.value)}
+            className="sm:col-span-2"
+          />
         </Field>
 
         <div className="sm:col-span-2 mt-1 border-t border-surface-border pt-3">

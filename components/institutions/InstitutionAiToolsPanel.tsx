@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Phone, Mail, MessageSquare, FileText, HelpCircle, ShieldQuestion, Copy, Check, Loader2, Sparkles, Target } from "lucide-react";
+import { Phone, Mail, MessageSquare, FileText, HelpCircle, ShieldQuestion, Copy, Check, Loader2, Sparkles, Target, MonitorPlay, Wallet, Gauge } from "lucide-react";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,10 @@ const ACTIONS: { key: string; label: string; icon: any }[] = [
   { key: "proposal", label: "제안서", icon: FileText },
   { key: "expected_questions", label: "예상질문", icon: HelpCircle },
   { key: "objection_handling", label: "반박대응", icon: ShieldQuestion },
+  // --- ZeroPass 통합 확장 (2026.10) ---
+  { key: "post_demo_followup", label: "시연 후 후속메일", icon: MonitorPlay },
+  { key: "budget_schedule", label: "예산·구매일정 정리", icon: Wallet },
+  { key: "contract_likelihood", label: "계약가능성 판단", icon: Gauge },
 ];
 
 export function InstitutionAiToolsPanel({ institutionId }: { institutionId: string }) {
@@ -110,11 +114,16 @@ export function InstitutionAiToolsPanel({ institutionId }: { institutionId: stri
               <Button size="sm" variant="secondary" onClick={handleCopy}>
                 {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "복사됨" : "복사"}
               </Button>
-              {(activeAction === "call_script" || activeAction === "email" || activeAction === "sms") && (
+              {(activeAction === "call_script" ||
+                activeAction === "email" ||
+                activeAction === "sms" ||
+                activeAction === "post_demo_followup") && (
                 <Button
                   size="sm"
                   onClick={() =>
-                    handleSaveActivity(activeAction === "call_script" ? "call" : (activeAction as "email" | "sms"))
+                    handleSaveActivity(
+                      activeAction === "call_script" ? "call" : activeAction === "post_demo_followup" ? "email" : (activeAction as "email" | "sms")
+                    )
                   }
                   disabled={saved}
                 >

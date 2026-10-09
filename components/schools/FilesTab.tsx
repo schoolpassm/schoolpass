@@ -12,20 +12,39 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
-const CATEGORY_LABEL: Record<SchoolFileCategory, string> = {
+const CATEGORY_LABEL: Record<string, string> = {
   brochure: "브로슈어",
   photo: "사진",
   proposal: "제안서",
   contract: "계약서",
+  demo_material: "시연자료",
   etc: "기타",
 };
 
-export function FilesTab({ schoolId }: { schoolId: string }) {
-  const { data: files, loading } = useCollection<SchoolFileDoc>(`schools_detail/${schoolId}/files`, [
-    orderBy("createdAt", "desc"),
-  ]);
+/** schoolId를 주면 기존처럼 schools/ 하위 Storage 경로 + schools_detail 컬렉션을,
+ * basePath/storagePrefix/categories를 주면 그 경로(예: institutions)를 쓴다.
+ * ZeroPass 통합 확장(2026.10)에서 institutions 상세페이지의 첨부파일 탭에 그대로 재사용하기 위해 범용화. */
+/** 지시서 5번(institutions의 "제안서·소개서·시연자료")을 포함하려고 schools보다 넓은
+ * 카테고리 문자열을 받을 수 있게 느슨한 타입으로 둔다 — schools 쪽 호출은 그대로 동작. */
+type FileCategory = SchoolFileCategory | "demo_material";
+
+export function FilesTab({
+  schoolId,
+  basePath,
+  storagePrefix,
+  categories,
+}: {
+  schoolId?: string;
+  basePath?: string;
+  storagePrefix?: string;
+  categories?: FileCategory[];
+}) {
+  const path = basePath ?? `schools_detail/${schoolId}`;
+  const prefix = storagePrefix ?? `schools/${schoolId}`;
+  const categoryOptions = categories ?? (["brochure", "photo", "proposal", "contract", "etc"] as FileCategory[]);
+  const { data: files, loading } = useCollection<SchoolFileDoc>(`${path}/files`, [orderBy("createdAt", "desc")]);
   const { firebaseUser } = useAuth();
-  const [category, setCategory] = useState<SchoolFileCategory>("photo");
+  const [category, setCategory] = useState<FileCategory>(categoryOptions[0]);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,11 +53,11 @@ export function FilesTab({ schoolId }: { schoolId: string }) {
     if (!file || !firebaseUser) return;
     setUploading(true);
     try {
-      const storagePath = `schools/${schoolId}/${category}/${Date.now()}_${file.name}`;
+      const storagePath = `${prefix}/${category}/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
-      await addDoc(collection(db, "schools_detail", schoolId, "files"), {
+      await addDoc(collection(db, path, "files"), {
         category,
         fileName: file.name,
         url,
@@ -59,12 +78,12 @@ export function FilesTab({ schoolId }: { schoolId: string }) {
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-surface-border bg-surface-muted p-3">
         <select
           value={category}
-          onChange={(e) => setCategory(e.target.value as SchoolFileCategory)}
+          onChange={(e) => setCategory(e.target.value as FileCategory)}
           className="h-9 rounded-lg border border-surface-border bg-white px-2 text-xs"
         >
-          {Object.entries(CATEGORY_LABEL).map(([k, v]) => (
+          {categoryOptions.map((k) => (
             <option key={k} value={k}>
-              {v}
+              {CATEGORY_LABEL[k] ?? k}
             </option>
           ))}
         </select>

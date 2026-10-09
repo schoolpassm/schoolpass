@@ -2,18 +2,20 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
-import { ShieldAlert, RefreshCw, UserPlus } from "lucide-react";
+import { ShieldAlert, RefreshCw, UserPlus, Lock, Save } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Input";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { UserDoc, UserRole } from "@/types";
+import { UserDoc, UserRole, SystemSettingsDoc } from "@/types";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
+import { getSystemSettings, updateSystemSettings } from "@/lib/api/settings";
+import { formatDate } from "@/lib/utils";
 
 const ROLE_LABEL: Record<UserRole, string> = { admin: "관리자", manager: "매니저", partner: "파트너" };
 
@@ -94,9 +96,130 @@ function NewMemberModal({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+/**
+ * ZeroPass 통합 확장(2026.10 지시서 7번) — "보유기간 및 삭제정책", "외부 AI 서비스로
+ * 전송되는 데이터 범위에 대한 통제"를 관리자가 문서화·설정할 수 있는 카드.
+ * 저장은 settings/system 단일 문서(merge)로 처리하며, 편집은 admin만 가능.
+ */
+function PrivacySecurityCard({ isAdmin, actorName }: { isAdmin: boolean; actorName: string }) {
+  const [settings, setSettings] = useState<SystemSettingsDoc | null>(null);
+  const [policyDraft, setPolicyDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getSystemSettings().then((s) => {
+      setSettings(s);
+      setPolicyDraft(s.dataRetentionPolicy ?? "");
+    });
+  }, []);
+
+  async function savePolicy() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateSystemSettings({ dataRetentionPolicy: policyDraft }, actorName);
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleScope(key: keyof SystemSettingsDoc["aiDataScope"]) {
+    if (!settings) return;
+    const next = { ...settings.aiDataScope, [key]: !settings.aiDataScope[key] };
+    setSettings({ ...settings, aiDataScope: next });
+    await updateSystemSettings({ aiDataScope: next }, actorName);
+  }
+
+  if (!settings) {
+    return (
+      <Card className="mt-4">
+        <CardBody>
+          <p className="text-xs text-ink-300">불러오는 중...</p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>
+          <span className="flex items-center gap-1.5">
+            <Lock size={15} className="text-primary-500" /> 개인정보 및 보안
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardBody className="space-y-5">
+        <div>
+          <p className="mb-1 text-sm font-semibold text-ink-900">보유기간 및 삭제정책</p>
+          <p className="mb-2 text-xs text-ink-500">
+            고객(학교/관공서/민간기업) 개인정보·영업정보의 보유기간과 삭제 기준을 여기에 문서화하세요. (예: "계약 종료 후 3년,
+            미계약 건은 최종 접촉 2년 후 익명화")
+          </p>
+          <textarea
+            disabled={!isAdmin}
+            value={policyDraft}
+            onChange={(e) => setPolicyDraft(e.target.value)}
+            rows={4}
+            placeholder="아직 정책이 입력되지 않았습니다 (검토 필요)"
+            className="w-full rounded-lg border border-surface-border bg-white p-3 text-sm disabled:bg-surface-muted"
+          />
+          {isAdmin && (
+            <div className="mt-2 flex items-center gap-2">
+              <Button size="sm" onClick={savePolicy} disabled={saving}>
+                <Save size={13} /> {saving ? "저장 중..." : "저장"}
+              </Button>
+              {saved && <span className="text-xs text-emerald-600">저장됨</span>}
+            </div>
+          )}
+          {settings.updatedAt && (
+            <p className="mt-1 text-[11px] text-ink-300">
+              최종 수정: {formatDate(settings.updatedAt, true)} {settings.updatedByName && `· ${settings.updatedByName}`}
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-surface-border pt-4">
+          <p className="mb-1 text-sm font-semibold text-ink-900">외부 AI(Claude API) 전송 데이터 범위</p>
+          <p className="mb-2 text-xs text-ink-500">
+            AI 영업도구(전화스크립트·이메일·제안서 등 생성)가 외부 AI 서비스로 보내는 정보 범위를 제한할 수 있습니다. 끄면 해당
+            정보는 AI 프롬프트에서 제외됩니다.
+          </p>
+          <div className="space-y-2">
+            {(
+              [
+                ["includeContactInfo", "담당자 성함·연락처 포함"],
+                ["includeBudgetInfo", "예산·계약금액 정보 포함"],
+                ["includeNotes", "메모·활동기록 요약 포함"],
+              ] as [keyof SystemSettingsDoc["aiDataScope"], string][]
+            ).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  disabled={!isAdmin}
+                  checked={settings.aiDataScope[key]}
+                  onChange={() => toggleScope(key)}
+                  className="h-4 w-4 rounded border-surface-border"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-600">
+            참고: 현재 이 설정은 저장·조회만 지원되며, AI 생성 호출부에 실제로 적용하려면 각 액션별 프롬프트 빌더가 이 설정을
+            읽어 필드를 제외하도록 연동이 필요합니다 (후속 작업으로 분리 — 확정된 적용 범위처럼 표시하지 않음).
+          </p>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { data: users, loading } = useCollection<UserDoc>("users");
-  const { isAdmin, firebaseUser } = useAuth();
+  const { isAdmin, firebaseUser, userDoc } = useAuth();
   const [syncing, setSyncing] = useState<string | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
 
@@ -215,6 +338,8 @@ export default function SettingsPage() {
       </Card>
 
       <NewMemberModal open={addMemberOpen} onClose={() => setAddMemberOpen(false)} />
+
+      <PrivacySecurityCard isAdmin={isAdmin} actorName={userDoc?.name ?? ""} />
     </AppShell>
   );
 }

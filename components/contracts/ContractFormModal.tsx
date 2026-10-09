@@ -11,13 +11,19 @@ import { useCollection } from "@/lib/hooks/useCollection";
 import { PartnerDoc, SchoolPassProduct, CommissionCalcMethod } from "@/types";
 import { Timestamp } from "firebase/firestore";
 import { SchoolPickerInput } from "@/components/schools/SchoolPickerInput";
+import { InstitutionPickerInput } from "@/components/institutions/InstitutionPickerInput";
+
+/** ZeroPass 통합 확장(2026.10): 계약 대상을 학교 또는 기관(관공서/민간기업 등) 중 하나로 고른다. */
+type TargetKind = "school" | "institution";
 
 export function ContractFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { firebaseUser, userDoc } = useAuth();
   const { data: partners } = useCollection<PartnerDoc>("partners");
   const [saving, setSaving] = useState(false);
 
+  const [targetKind, setTargetKind] = useState<TargetKind>("school");
   const [selectedSchool, setSelectedSchool] = useState<{ id: string; name: string; region: string } | null>(null);
+  const [selectedInstitution, setSelectedInstitution] = useState<{ id: string; name: string; region: string } | null>(null);
   const [product, setProduct] = useState<SchoolPassProduct>("school_pass");
   const [calcMethod, setCalcMethod] = useState<CommissionCalcMethod>("unit");
   const [unitCount, setUnitCount] = useState("1");
@@ -31,6 +37,7 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
 
   const selectedPartner = partners.find((p) => p.id === partnerId);
   const schoolId = selectedSchool?.id ?? "";
+  const hasTarget = targetKind === "school" ? !!selectedSchool : !!selectedInstitution;
 
   useEffect(() => {
     if (calcMethod !== "unit") return;
@@ -57,14 +64,18 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firebaseUser || !selectedSchool) return;
+    if (!firebaseUser || !hasTarget) return;
     setSaving(true);
     try {
       await createContract(
         {
-          schoolId,
-          schoolName: selectedSchool.name,
-          region: selectedSchool.region,
+          // ZeroPass 통합 확장(2026.10): 학교 계약은 기존처럼 schoolId만, 기관 계약은 schoolId를 ""로
+          // 비워두고 institutionId를 채운다 (createContract가 둘을 분기 처리).
+          schoolId: targetKind === "school" ? schoolId : "",
+          schoolName: targetKind === "school" ? selectedSchool!.name : "",
+          institutionId: targetKind === "institution" ? selectedInstitution!.id : undefined,
+          institutionName: targetKind === "institution" ? selectedInstitution!.name : undefined,
+          region: targetKind === "school" ? selectedSchool!.region : selectedInstitution!.region,
           contractAmount,
           installAmount: Number(installAmount) || 0,
           installDate: installDate ? Timestamp.fromDate(new Date(installDate)) : null,
@@ -90,8 +101,25 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
     <Modal open={open} onClose={onClose} title="계약 등록" width="max-w-2xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="학교">
-            <SchoolPickerInput value={selectedSchool} onSelect={(s) => setSelectedSchool(s)} />
+          <Field label="계약 대상">
+            <Select
+              value={targetKind}
+              onChange={(e) => {
+                setTargetKind(e.target.value as TargetKind);
+                setSelectedSchool(null);
+                setSelectedInstitution(null);
+              }}
+            >
+              <option value="school">학교 (SchoolPass)</option>
+              <option value="institution">관공서·민간기업 등 (ZeroPass)</option>
+            </Select>
+          </Field>
+          <Field label={targetKind === "school" ? "학교" : "기관"}>
+            {targetKind === "school" ? (
+              <SchoolPickerInput value={selectedSchool} onSelect={(s) => setSelectedSchool(s)} />
+            ) : (
+              <InstitutionPickerInput value={selectedInstitution} onSelect={(i) => setSelectedInstitution(i)} />
+            )}
           </Field>
           <Field label="지역파트너">
             <Select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
@@ -148,7 +176,7 @@ export function ContractFormModal({ open, onClose }: { open: boolean; onClose: (
           <Button type="button" variant="secondary" onClick={onClose}>
             취소
           </Button>
-          <Button type="submit" disabled={saving || !schoolId}>
+          <Button type="submit" disabled={saving || !hasTarget}>
             {saving ? "저장 중..." : "계약 등록"}
           </Button>
         </div>

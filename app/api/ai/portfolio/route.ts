@@ -42,24 +42,52 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === "daily_briefing") {
-      const [topScoredSnap, newSnap, contractSnap, installedCountSnap] = await Promise.all([
+      const [topScoredSnap, newSnap, contractSnap, installedCountSnap, institutionsSnap] = await Promise.all([
         db.collection("schools_summary").orderBy("aiScore", "desc").limit(10).get(),
         db.collection("schools_summary").where("status", "==", "신규").limit(50).get(),
         db.collection("schools_summary").where("status", "==", "계약").count().get(),
         db.collection("schools_summary").where("status", "==", "설치완료").count().get(),
+        // ZeroPass 통합 확장(2026.10 지시서 6번: "오늘 연락할 기관 추천", "후속 연락 지연 탐지") —
+        // institutions는 목록 페이지도 전체를 그대로 불러오는 규모라 bounded 읽기 걱정 없이 전체를 가져온다.
+        db.collection("institutions").get(),
       ]);
       const topSchools = topScoredSnap.docs.map((d) => `${d.get("name")}(${d.get("aiScore")}점, ${d.get("region")})`);
       const newCount = newSnap.size;
+
+      const now = Date.now();
+      const TERMINAL = ["보류", "실패"];
+      const overdueInstitutions: string[] = [];
+      const todayContactInstitutions: string[] = [];
+      institutionsSnap.docs.forEach((d) => {
+        const data = d.data();
+        const salesStage = data.salesStage ?? "신규";
+        if (TERMINAL.includes(salesStage)) return;
+        const nextDue = data.nextContactDueAt?.toDate ? data.nextContactDueAt.toDate() : null;
+        if (nextDue) {
+          if (nextDue.getTime() < now) {
+            overdueInstitutions.push(`${data.name}(예정일 ${nextDue.toISOString().slice(0, 10)} 지남)`);
+          } else if (nextDue.toDateString() === new Date(now).toDateString()) {
+            todayContactInstitutions.push(`${data.name}(오늘 접촉 예정)`);
+          }
+        }
+      });
 
       const dataBlock = `[실제 데이터]
 - AI 점수 상위 10개 학교: ${topSchools.join(", ") || "없음"}
 - 신규(미접촉) 학교 수(최대 50건 샘플 기준): ${newCount}
 - 계약 단계 학교 수: ${contractSnap.data().count}
-- 설치완료(구축) 학교 수: ${installedCountSnap.data().count}`;
+- 설치완료(구축) 학교 수: ${installedCountSnap.data().count}
+- 오늘 접촉 예정 기관(최대 10곳): ${todayContactInstitutions.slice(0, 10).join(", ") || "없음"}
+- 후속 연락 지연된 기관(다음접촉예정일 지남, 최대 10곳): ${overdueInstitutions.slice(0, 10).join(", ") || "없음"}`;
 
-      const prompt = `${dataBlock}\n\n오늘 영업팀에게 전달할 아침 브리핑을 3~5문장으로 작성해줘. 오늘 우선적으로 할 일과, 위 데이터에서 눈에 띄는 포인트를 짚어줘.`;
-      const text = await callClaude(prompt, { system: SYSTEM_PROMPT, maxTokens: 500, model: "claude-haiku-4-5-20251001" });
-      return NextResponse.json({ ok: true, text });
+      const prompt = `${dataBlock}\n\n오늘 영업팀에게 전달할 아침 브리핑을 3~6문장으로 작성해줘. 오늘 우선적으로 할 일(특히 후속 연락이 지연된 기관이 있으면 그것부터)과, 위 데이터에서 눈에 띄는 포인트를 짚어줘. 위 데이터에 없는 기관명이나 숫자는 지어내지 말 것.`;
+      const text = await callClaude(prompt, { system: SYSTEM_PROMPT, maxTokens: 550, model: "claude-haiku-4-5-20251001" });
+      return NextResponse.json({
+        ok: true,
+        text,
+        todayContactInstitutions: todayContactInstitutions.slice(0, 10),
+        overdueInstitutions: overdueInstitutions.slice(0, 10),
+      });
     }
 
     if (action === "budget_recommendations") {

@@ -169,6 +169,18 @@ export async function updateInstitutionPublicStage(id: string, publicStage: Inst
 }
 
 /**
+ * 통합 16단계 파이프라인(ZeroPass 통합 확장, 2026.10) 단계 변경. 기존 status(9단계)/publicStage(16단계,
+ * 공공영업 전용)는 건드리지 않는 완전히 별개 트랙 — salesStageEnteredAt을 단계별 체류일수 기준으로 쓴다.
+ */
+export async function updateInstitutionSalesStage(id: string, salesStage: InstitutionDoc["salesStage"]) {
+  return updateDoc(doc(db, COLLECTION, id), {
+    salesStage,
+    salesStageEnteredAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * 담당자 자동 지정: 이 관공서에 아직 담당자가 없는 상태에서 누군가 전화/이메일/문자/방문을 기록하면
  * 그 사람이 자동으로 담당자가 된다 (학교와 동일한 정책).
  */

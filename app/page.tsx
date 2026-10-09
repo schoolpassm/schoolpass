@@ -26,6 +26,7 @@ import { TodayMeetings } from "@/components/dashboard/TodayMeetings";
 import { AiBriefingCard } from "@/components/dashboard/AiBriefingCard";
 import { BudgetRecommendations } from "@/components/dashboard/BudgetRecommendations";
 import { NearbySchoolsWidget } from "@/components/dashboard/NearbySchoolsWidget";
+import { UnifiedSalesPanel } from "@/components/dashboard/UnifiedSalesPanel";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
 import { useDashboardStats } from "@/lib/hooks/useDashboardStats";
@@ -165,6 +166,8 @@ export default function DashboardPage() {
         />
         <StatCard icon={Wallet} label="예상 매출 (추정)" value={formatKRW(Math.round(expectedRevenue))} accent="green" />
       </div>
+
+      <UnifiedSalesPanel schoolStats={stats} />
 
       <div className="mt-4">
         <AiBriefingCard />

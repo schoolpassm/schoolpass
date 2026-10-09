@@ -46,8 +46,20 @@ export async function createContract(
       createdBy: uid,
     });
 
-    tx.update(doc(db, "schools_detail", input.schoolId), { status: "계약", updatedAt: serverTimestamp() });
-    tx.set(doc(db, "schools_summary", input.schoolId), { status: "계약", updatedAt: serverTimestamp() }, { merge: true });
+    // ZeroPass 통합 확장(2026.10): schoolId가 채워져 있으면 기존처럼 학교 쪽을 갱신하고,
+    // 대신 institutionId가 채워져 있으면(관공서/민간기업 등 ZeroPass 계약) institutions 쪽을 갱신한다.
+    // 기존 호출부(학교 계약)는 institutionId를 안 보내므로 동작이 전혀 바뀌지 않는다.
+    if (input.schoolId) {
+      tx.update(doc(db, "schools_detail", input.schoolId), { status: "계약", updatedAt: serverTimestamp() });
+      tx.set(doc(db, "schools_summary", input.schoolId), { status: "계약", updatedAt: serverTimestamp() }, { merge: true });
+    } else if (input.institutionId) {
+      tx.update(doc(db, "institutions", input.institutionId), {
+        status: "계약",
+        salesStage: "계약",
+        salesStageEnteredAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
 
     if (input.partnerId) {
       const partnerRef = doc(db, "partners", input.partnerId);

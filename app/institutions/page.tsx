@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
 import { StatusBadge, GradeBadge } from "@/components/ui/Badge";
 import { useCollection } from "@/lib/hooks/useCollection";
-import { InstitutionDoc, InstitutionType, SchoolStatus } from "@/types";
+import { InstitutionDoc, InstitutionType, SalesProduct, SALES_PRODUCT_LABELS, SchoolStatus } from "@/types";
 import { InstitutionFormModal } from "@/components/institutions/InstitutionFormModal";
 import { InstitutionDashboardStats } from "@/components/institutions/InstitutionDashboardStats";
 import { toTel, toMailto } from "@/lib/utils";
@@ -30,8 +30,17 @@ const TYPES: InstitutionType[] = [
   "교육부",
   "교육청",
   "교육지원청",
+  // --- ZeroPass 통합 확장 (2026.10) ---
+  "중앙행정기관",
+  "공기업·공단",
+  "공공시설",
+  "민간기업",
+  "제조공장",
+  "물류센터",
+  "연구소",
 ];
 const STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
+const PRODUCTS: SalesProduct[] = ["school_pass", "zero_pass", "both"];
 
 export default function InstitutionsPage() {
   const { firebaseUser } = useAuth();
@@ -40,6 +49,7 @@ export default function InstitutionsPage() {
   const [editing, setEditing] = useState<InstitutionDoc | null>(null);
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [productFilter, setProductFilter] = useState("");
   const [keyword, setKeyword] = useState("");
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,10 +115,11 @@ export default function InstitutionsPage() {
     return institutions.filter((i) => {
       if (typeFilter && i.type !== typeFilter) return false;
       if (statusFilter && i.status !== statusFilter) return false;
+      if (productFilter && i.product !== productFilter) return false;
       if (keyword && !i.name.includes(keyword) && !i.region.includes(keyword)) return false;
       return true;
     });
-  }, [institutions, typeFilter, statusFilter, keyword]);
+  }, [institutions, typeFilter, statusFilter, productFilter, keyword]);
 
   return (
     <AppShell title="관공서 관리">
@@ -137,6 +148,14 @@ export default function InstitutionsPage() {
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </Select>
+        <Select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className="w-36">
+          <option value="">전체 제품</option>
+          {PRODUCTS.map((p) => (
+            <option key={p} value={p}>
+              {SALES_PRODUCT_LABELS[p]}
             </option>
           ))}
         </Select>
@@ -179,6 +198,7 @@ export default function InstitutionsPage() {
             <tr className="border-b border-surface-border bg-surface-muted text-left text-xs text-ink-500">
               <th className="px-4 py-3 font-medium">기관명</th>
               <th className="px-4 py-3 font-medium">유형</th>
+              <th className="px-4 py-3 font-medium">제품</th>
               <th className="px-4 py-3 font-medium">지역</th>
               <th className="px-4 py-3 font-medium">담당자</th>
               <th className="px-4 py-3 font-medium">영업담당</th>
@@ -196,6 +216,9 @@ export default function InstitutionsPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 text-ink-500">{i.type}</td>
+                <td className="px-4 py-3 text-ink-500">
+                  {i.product ? SALES_PRODUCT_LABELS[i.product] : <span className="text-amber-500">검토 필요</span>}
+                </td>
                 <td className="px-4 py-3 text-ink-500">{i.region}</td>
                 <td className="px-4 py-3 text-ink-500">
                   {i.contactName ? `${i.contactName}${i.contactTitle ? ` (${i.contactTitle})` : ""}` : "-"}
@@ -221,7 +244,7 @@ export default function InstitutionsPage() {
             ))}
             {filtered.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center text-sm text-ink-300">
+                <td colSpan={9} className="px-4 py-16 text-center text-sm text-ink-300">
                   등록된 관공서가 없습니다. 위 "관공서 등록" 버튼으로 추가하세요.
                 </td>
               </tr>
