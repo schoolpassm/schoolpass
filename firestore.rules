@@ -77,6 +77,13 @@ service cloud.firestore {
         allow read: if isManager();
         allow write: if false; // 서버(API Route, Admin SDK)에서만 기록
       }
+      // ZeroPass 통합 확장(2026.10 지시서 7번) — 열람·수정 이력. schools 상세페이지에 UI가
+      // 아직 없어도, institutions와 동일한 규칙을 미리 둬서 추가할 때 규칙 변경이 필요 없게 한다.
+      match /access_logs/{logId} {
+        allow read: if isAdmin();
+        allow create: if isManager() && isActive();
+        allow update, delete: if false;
+      }
     }
 
     // ------------------------------------------------------------------
@@ -114,6 +121,22 @@ service cloud.firestore {
         allow read: if isManager();
         allow create, update: if isManager() && isActive();
         allow delete: if isAdmin();
+      }
+
+      // ZeroPass 통합 확장(2026.10 지시서 5번) — 견적/첨부파일. schools_detail의 quotes/files
+      // 규칙과 동일하게 맞춰 QuotesTab/FilesTab 컴포넌트가 institutions에도 그대로 동작하게 한다.
+      match /quotes/{quoteId} {
+        allow read: if isManager();
+        allow write: if isManager() && isActive();
+      }
+      match /files/{fileId} {
+        allow read: if isManager();
+        allow write: if isManager() && isActive();
+      }
+      match /access_logs/{logId} {
+        allow read: if isAdmin();
+        allow create: if isManager() && isActive();
+        allow update, delete: if false;
       }
     }
 
@@ -188,6 +211,16 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isManager();
       allow update, delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // settings: ZeroPass 통합 확장(2026.10 지시서 7번) — 보유기간/삭제정책 문서,
+    // 외부 AI 전송 데이터 범위 설정 등 시스템 전역 설정(단일 문서 settings/system).
+    // 조회는 로그인한 누구나(투명성), 수정은 admin만.
+    // ------------------------------------------------------------------
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
