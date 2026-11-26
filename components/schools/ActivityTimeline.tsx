@@ -9,6 +9,7 @@ import { addSchoolActivity } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/Button";
 import { formatDate, cn } from "@/lib/utils";
+import { QuickCallLog } from "@/components/schools/QuickCallLog";
 
 // 칸반보드 컬럼과 완전히 동일한 상태 목록(보류·실패 포함) — 여기서 고르면 칸반에도 그대로 반영됨
 const ALL_STATUSES: SchoolStatus[] = ["신규", "전화완료", "자료발송", "방문예정", "시연", "견적", "협의중", "계약", "설치완료", "보류", "실패"];
@@ -73,6 +74,10 @@ export function ActivityTimeline({ schoolId, currentStatus }: { schoolId: string
 
   return (
     <div>
+      <div className="mb-4">
+        <QuickCallLog schoolId={schoolId} currentStatus={currentStatus} />
+      </div>
+
       <div className="mb-3 flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
           <button

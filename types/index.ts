@@ -93,6 +93,7 @@ export interface SchoolDoc extends BaseDoc {
   aiScoreFactors?: AiScoreFactor[]; // 구조화된 근거 목록 (뱃지 렌더링용)
   aiScoreUpdatedAt?: Timestamp | null;
   lastContactedAt?: Timestamp | null; // 최근 접촉일 (활동기록 생성 시 자동 갱신, "이번주 전화 대상" 계산용)
+  nextContactAt?: Timestamp | null; // 다음 연락 예정일 (통화 후 빠른 기록 / 오늘 할 일 홈에서 사용)
   // --- 학교알리미 추가 공시데이터 (교직원수/학교회계/발전기금/시설/시설안전/학교용지/보건) ---
   teacherCount?: number; // 교직원수(총계)
   eduOfficeName?: string; // 교육지원청명 (schoolinfo JU_ORG_NM, 시도교육청보다 세분화된 실제 관할 교육지원청)
@@ -145,6 +146,7 @@ export interface SchoolSummaryDoc {
   isNewlyOpened?: boolean;
   aiScore?: number | null;
   lastContactedAt?: Timestamp | null;
+  nextContactAt?: Timestamp | null; // 다음 연락 예정일 ("오늘 할 일" 조회용)
   updatedAt: Timestamp | null;
 }
 
@@ -373,6 +375,13 @@ export type InstitutionType =
   | "경찰서"
   | "국방부·군기관"
   | "기타 공공기관"
+  // --- 공공기관 유형 보강 (2026.11) — 기존 값은 그대로, 추가만 ---
+  | "광역자치단체"
+  | "행정복지센터"
+  | "보건소"
+  | "도서관"
+  | "법원·검찰"
+  | "문화·체육시설"
   // --- SchoolPass 교육행정 계층 (2026.09 공통 CRM 엔진 확장으로 추가) ---
   | "교육부"
   | "교육청"

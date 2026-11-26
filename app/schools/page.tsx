@@ -6,7 +6,7 @@ import { Suspense } from "react";
 import { useMemo, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2, Users, Sparkles, LocateFixed, X } from "lucide-react";
+import { Plus, Upload, Download, FileDown, Search, RefreshCw, Route, Map as MapIcon, Loader2, Users, Sparkles, LocateFixed, X, Tag as TagIcon } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
@@ -15,6 +15,7 @@ import { SchoolFormModal } from "@/components/schools/SchoolFormModal";
 import { NeisSyncModal } from "@/components/schools/NeisSyncModal";
 import { StudentCountSyncModal } from "@/components/schools/StudentCountSyncModal";
 import { BulkScoreModal } from "@/components/schools/BulkScoreModal";
+import { RegionTagModal } from "@/components/schools/RegionTagModal";
 import { useSchoolsPaginated } from "@/lib/hooks/useSchoolsPaginated";
 import { useSchoolsCount } from "@/lib/hooks/useSchoolsCount";
 import { useInfiniteScrollSentinel } from "@/lib/hooks/useInfiniteScrollSentinel";
@@ -37,13 +38,14 @@ export default function SchoolsPage() {
 }
 
 function SchoolsPageInner() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, isAdmin } = useAuth();
   const searchParams = useSearchParams();
   const [formOpen, setFormOpen] = useState(false);
   const [neisOpen, setNeisOpen] = useState(false);
   const [studentCountOpen, setStudentCountOpen] = useState(false);
   const [bulkScoreOpen, setBulkScoreOpen] = useState(false);
   const [nearbyOpen, setNearbyOpen] = useState(false);
+  const [regionTagOpen, setRegionTagOpen] = useState(false);
   const { schools: nearbySchools, loading: nearbyLoading, error: nearbyError, radiusKm, findNearby } = useNearbySchools();
   const [keywordInput, setKeywordInput] = useState("");
   const [namePrefix, setNamePrefix] = useState("");
@@ -59,6 +61,8 @@ function SchoolsPageInner() {
   const [levelFilter, setLevelFilter] = useState<SchoolLevel | undefined>(
     (searchParams.get("level") as SchoolLevel) || undefined
   );
+  // 프리셋 태그 필터("용인", "우선클로징") — 태그 모드에서는 이름검색/정렬이 비활성화된다(복합 인덱스 없이 동작시키기 위함).
+  const [tagFilter, setTagFilter] = useState<string | undefined>(searchParams.get("tag") || undefined);
   const [importing, setImporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,14 +73,19 @@ function SchoolsPageInner() {
       status: statusFilter,
       grade: gradeFilter,
       level: levelFilter,
+      tag: tagFilter,
       namePrefix: namePrefix || undefined,
       sortByName,
     }),
-    [regionFilter, statusFilter, gradeFilter, levelFilter, namePrefix, sortByName]
+    [regionFilter, statusFilter, gradeFilter, levelFilter, tagFilter, namePrefix, sortByName]
   );
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSchoolsPaginated(filters);
-  const schools = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
+  const schools = useMemo(() => {
+    const list = data?.pages.flatMap((p) => p.items) ?? [];
+    // 태그 모드는 서버 정렬이 없으므로 화면에서 가나다순으로 정렬
+    return tagFilter ? [...list].sort((a, b) => a.name.localeCompare(b.name, "ko")) : list;
+  }, [data, tagFilter]);
   const { count: totalCount, loading: countLoading } = useSchoolsCount(filters);
 
   const sentinelRef = useInfiniteScrollSentinel(
@@ -170,6 +179,11 @@ function SchoolsPageInner() {
           >
             <LocateFixed size={14} /> 내 주변 학교
           </Button>
+          {isAdmin && (
+            <Button variant="secondary" size="sm" onClick={() => setRegionTagOpen(true)}>
+              <TagIcon size={14} /> 지역 태그 지정
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={downloadSchoolTemplate}>
             <FileDown size={14} /> 템플릿
           </Button>
@@ -184,6 +198,30 @@ function SchoolsPageInner() {
             <Plus size={14} /> 학교 등록
           </Button>
         </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-ink-500">바로가기:</span>
+        {[
+          { tag: undefined as string | undefined, label: "전체" },
+          { tag: "용인", label: "용인 우선 공략" },
+          { tag: "우선클로징", label: "★ 우선 클로징" },
+        ].map((p) => (
+          <button
+            key={p.label}
+            onClick={() => setTagFilter(p.tag)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+              tagFilter === p.tag ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        {tagFilter && (
+          <span className="text-[11px] text-ink-300">
+            (태그 보기 중엔 이름 검색·정렬이 꺼집니다{tagFilter === "용인" ? " · 안 보이면 [지역 태그 지정]으로 먼저 태그를 붙이세요" : ""})
+          </span>
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -240,7 +278,7 @@ function SchoolsPageInner() {
           <span className="text-xs text-ink-500">정렬:</span>
           <button
             onClick={() => setSortByName(false)}
-            disabled={!!namePrefix}
+            disabled={!!namePrefix || !!tagFilter}
             className={`rounded-full px-3 py-1.5 text-xs font-medium ${
               !sortByName ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
             } disabled:opacity-40`}
@@ -249,7 +287,7 @@ function SchoolsPageInner() {
           </button>
           <button
             onClick={() => setSortByName(true)}
-            disabled={!!namePrefix}
+            disabled={!!namePrefix || !!tagFilter}
             className={`rounded-full px-3 py-1.5 text-xs font-medium ${
               sortByName ? "bg-primary-500 text-white" : "bg-surface-muted text-ink-500 hover:bg-surface-border"
             } disabled:opacity-40`}
@@ -328,6 +366,7 @@ function SchoolsPageInner() {
       <NeisSyncModal open={neisOpen} onClose={() => setNeisOpen(false)} />
       <StudentCountSyncModal open={studentCountOpen} onClose={() => setStudentCountOpen(false)} />
       <BulkScoreModal open={bulkScoreOpen} onClose={() => setBulkScoreOpen(false)} />
+      <RegionTagModal open={regionTagOpen} onClose={() => setRegionTagOpen(false)} />
     </AppShell>
   );
 }

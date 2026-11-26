@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Phone, Mail, MessageSquare, MapPin, FileDown, UserPlus, Pencil } from "lucide-react";
+import { Phone, Mail, MessageSquare, MapPin, FileDown, UserPlus, Pencil, Star, CalendarClock, X } from "lucide-react";
 import { SchoolDoc } from "@/types";
 import { StatusBadge, GradeBadge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { toTel, toSms, toMailto, toGoogleMaps } from "@/lib/utils";
+import { toTel, toSms, toMailto, toGoogleMaps, formatDate } from "@/lib/utils";
 import { formatKRW } from "@/lib/commission";
 import { Select } from "@/components/ui/Input";
-import { updateSchoolStatus } from "@/lib/api/schools";
+import { updateSchoolStatus, toggleSchoolTag, setSchoolNextContact } from "@/lib/api/schools";
 import { useAuth } from "@/lib/auth-context";
 import { SchoolStatus } from "@/types";
 import { SchoolFormModal } from "@/components/schools/SchoolFormModal";
@@ -49,6 +49,19 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
     await updateSchoolStatus(school.id, status, firebaseUser.uid, userDoc?.name ?? "");
   }
 
+  const PRIORITY_TAG = "우선클로징";
+  const isPriority = (school.tags ?? []).includes(PRIORITY_TAG);
+  const nextContactDate = school.nextContactAt ? school.nextContactAt.toDate() : null;
+  const nextOverdue = nextContactDate ? nextContactDate.getTime() < new Date().setHours(0, 0, 0, 0) : false;
+
+  async function onTogglePriority() {
+    await toggleSchoolTag(school.id, school.tags ?? [], PRIORITY_TAG);
+  }
+
+  async function onNextContactChange(value: string) {
+    await setSchoolNextContact(school.id, value ? new Date(`${value}T09:00:00`) : null);
+  }
+
   // 담당자 개인 연락처가 있으면 그걸 우선 사용, 없으면 학교 대표 전화/이메일로 대체
   const callTarget = school.contactPhone || school.phone;
   const emailTarget = school.contactEmail || school.email;
@@ -63,6 +76,11 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-ink-900">{school.name}</h2>
               <StatusBadge status={school.status} />
+              {isPriority && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  <Star size={11} className="fill-amber-500 text-amber-500" /> 우선클로징
+                </span>
+              )}
               {school.isClosed && (
                 <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-status-danger">
                   폐교
@@ -92,6 +110,10 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onTogglePriority}>
+            <Star size={14} className={isPriority ? "fill-amber-400 text-amber-500" : ""} />
+            {isPriority ? "우선클로징 해제" : "우선클로징 지정"}
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil size={14} /> 정보 수정
           </Button>
@@ -107,7 +129,26 @@ export function SchoolDetailHeader({ school }: { school: SchoolDoc }) {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-surface-border pt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-surface-border pt-3 text-xs">
+        <CalendarClock size={14} className={nextOverdue ? "text-status-danger" : "text-ink-400"} />
+        <span className={nextOverdue ? "font-semibold text-status-danger" : "text-ink-500"}>
+          다음 연락 예정일: {nextContactDate ? formatDate(school.nextContactAt) : "미지정"}
+          {nextOverdue && " (지남)"}
+        </span>
+        <input
+          type="date"
+          value={nextContactDate ? `${nextContactDate.getFullYear()}-${String(nextContactDate.getMonth() + 1).padStart(2, "0")}-${String(nextContactDate.getDate()).padStart(2, "0")}` : ""}
+          onChange={(e) => onNextContactChange(e.target.value)}
+          className="h-8 rounded-lg border border-surface-border bg-white px-2 text-xs"
+        />
+        {nextContactDate && (
+          <button onClick={() => onNextContactChange("")} className="rounded p-1 text-ink-400 hover:bg-surface-muted" title="예정일 해제">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-surface-border pt-4">
         <a href={toTel(callTarget)}>
           <button className="flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-2 text-xs font-medium text-ink-700 hover:bg-surface-muted">
             <Phone size={14} /> 전화걸기{school.contactPhone && " (담당자)"}

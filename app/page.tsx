@@ -26,6 +26,7 @@ import { TodayMeetings } from "@/components/dashboard/TodayMeetings";
 import { AiBriefingCard } from "@/components/dashboard/AiBriefingCard";
 import { BudgetRecommendations } from "@/components/dashboard/BudgetRecommendations";
 import { NearbySchoolsWidget } from "@/components/dashboard/NearbySchoolsWidget";
+import { TodayTasks } from "@/components/dashboard/TodayTasks";
 import { UnifiedSalesPanel } from "@/components/dashboard/UnifiedSalesPanel";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useCollection } from "@/lib/hooks/useCollection";
@@ -145,6 +146,10 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="대시보드">
+      <div className="mb-4">
+        <TodayTasks fallbackSchools={stats.weeklyCallTargets} />
+      </div>
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4">
         <StatCard icon={School} label="학교DB 수" value={stats.loading ? "-" : stats.totalSchools} accent="primary" href="/schools" />
         <StatCard icon={Building2} label="교육지원청 수" value={eduOffices.length} accent="violet" href="/education-offices" />

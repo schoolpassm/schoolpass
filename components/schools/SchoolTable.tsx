@@ -51,6 +51,11 @@ export function SchoolTable({
                 <Link href={`/schools/${s.id}`} className="font-medium text-ink-900 hover:text-primary-600">
                   {s.name}
                 </Link>
+                {(s.tags ?? []).includes("우선클로징") && (
+                  <span className="ml-1.5 text-amber-500" title="우선 클로징 대상">
+                    ★
+                  </span>
+                )}
                 {s.isNewlyOpened && (
                   <span className="ml-1.5 rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-600">
                     신설

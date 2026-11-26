@@ -23,7 +23,9 @@ export function useSchoolsCount(filters: SchoolListFilters) {
     if (filters.level) constraints.push(where("level", "==", filters.level));
     if (filters.status) constraints.push(where("status", "==", filters.status));
     if (filters.grade) constraints.push(where("grade", "==", filters.grade));
-    if (filters.namePrefix) {
+    if (filters.tag) {
+      constraints.push(where("tags", "array-contains", filters.tag));
+    } else if (filters.namePrefix) {
       constraints.push(where("name", ">=", filters.namePrefix));
       constraints.push(where("name", "<=", filters.namePrefix + "\uf8ff"));
       constraints.push(orderBy("name"));
@@ -43,7 +45,7 @@ export function useSchoolsCount(filters: SchoolListFilters) {
     return () => {
       cancelled = true;
     };
-  }, [filters.region, filters.level, filters.status, filters.grade, filters.namePrefix]);
+  }, [filters.region, filters.level, filters.status, filters.grade, filters.namePrefix, filters.tag]);
 
   return { count, loading };
 }

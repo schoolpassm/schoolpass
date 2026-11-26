@@ -20,6 +20,8 @@ export interface SchoolListFilters {
   status?: SchoolStatus;
   grade?: SchoolGrade;
   level?: SchoolLevel;
+  /** 태그 프리셋(예: "용인", "우선클로징"). array-contains라 복합 인덱스 없이 쓰려고 정렬은 생략(이름순은 클라이언트에서). */
+  tag?: string;
   /** 이름 접두어 검색 (Firestore 특성상 완전한 전문검색은 아니며, 이름이 이 값으로 "시작하는" 학교만 매칭됨) */
   namePrefix?: string;
   /** true면 가나다순(name 오름차순), false/미지정이면 최근 업데이트순 */
@@ -41,7 +43,10 @@ async function fetchSchoolsPage(filters: SchoolListFilters, cursor: QueryDocumen
   if (filters.status) constraints.push(where("status", "==", filters.status));
   if (filters.grade) constraints.push(where("grade", "==", filters.grade));
 
-  if (filters.namePrefix) {
+  if (filters.tag) {
+    // 태그 프리셋: 정렬 없이 문서ID 순 페이지네이션(복합 인덱스 불필요). 이름 검색은 이 모드에서 무시.
+    constraints.push(where("tags", "array-contains", filters.tag));
+  } else if (filters.namePrefix) {
     // 이름 접두어 범위 검색 (Firestore range query 트릭) — 이 경우 name으로 정렬은 항상 필수
     constraints.push(where("name", ">=", filters.namePrefix));
     constraints.push(where("name", "<=", filters.namePrefix + "\uf8ff"));

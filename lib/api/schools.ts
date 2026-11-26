@@ -7,6 +7,7 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -73,6 +74,7 @@ function toSummaryFields(input: Partial<SchoolDoc>): Partial<SchoolSummaryDoc> {
   if (input.tags !== undefined) summary.tags = input.tags;
   if (input.isNewlyOpened !== undefined) summary.isNewlyOpened = input.isNewlyOpened;
   if (input.aiScore !== undefined) summary.aiScore = input.aiScore;
+  if (input.nextContactAt !== undefined) summary.nextContactAt = input.nextContactAt;
   return summary;
 }
 
@@ -144,7 +146,9 @@ export async function updateSchoolStatus(schoolId: string, status: SchoolDoc["st
 export async function addSchoolActivity(
   schoolId: string,
   activity: Partial<SchoolActivityDoc>,
-  newStatus?: SchoolDoc["status"]
+  newStatus?: SchoolDoc["status"],
+  /** 지정하면 다음 연락 예정일도 같은 배치로 갱신(null이면 해제). undefined면 건드리지 않음. */
+  nextContactAt?: Date | null
 ) {
   const batch = writeBatch(db);
   const activityRef = doc(collection(db, DETAIL, schoolId, "activities"));
@@ -159,6 +163,11 @@ export async function addSchoolActivity(
   if (activity.type === "call" || activity.type === "email" || activity.type === "sms" || activity.type === "visit") {
     batch.update(doc(db, DETAIL, schoolId), { lastContactedAt: serverTimestamp() });
     batch.set(doc(db, SUMMARY, schoolId), { lastContactedAt: serverTimestamp() }, { merge: true });
+  }
+  if (nextContactAt !== undefined) {
+    const ts = nextContactAt ? Timestamp.fromDate(nextContactAt) : null;
+    batch.update(doc(db, DETAIL, schoolId), { nextContactAt: ts });
+    batch.set(doc(db, SUMMARY, schoolId), { nextContactAt: ts }, { merge: true });
   }
   // 상태(칸반 컬럼) 변경도 같은 배치에 포함 — 활동기록과 상태변경이 따로 놀지 않도록 원자적으로 처리
   if (newStatus) {
@@ -251,4 +260,20 @@ export async function bulkImportSchools(rows: SchoolRow[], uid: string) {
     }
     await batch.commit();
   }
+}
+
+/** 다음 연락 예정일만 단독으로 바꾼다(null이면 해제). */
+export async function setSchoolNextContact(schoolId: string, date: Date | null) {
+  const ts = date ? Timestamp.fromDate(date) : null;
+  const batch = writeBatch(db);
+  batch.update(doc(db, DETAIL, schoolId), { nextContactAt: ts, updatedAt: serverTimestamp() });
+  batch.set(doc(db, SUMMARY, schoolId), { nextContactAt: ts }, { merge: true });
+  return batch.commit();
+}
+
+/** 태그를 추가/제거한다(상세·요약 동시 갱신). 예: 우선클로징 토글. */
+export async function toggleSchoolTag(schoolId: string, currentTags: string[], tag: string) {
+  const next = currentTags.includes(tag) ? currentTags.filter((t) => t !== tag) : [...currentTags, tag];
+  await updateSchool(schoolId, { tags: next });
+  return next;
 }
