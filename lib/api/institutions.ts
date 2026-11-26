@@ -89,21 +89,21 @@ export async function addInstitutionDocument(institutionId: string, input: Parti
  * 엑셀 일괄등록.
  * - Firestore는 undefined 값을 거부하므로 담당자/직책은 값이 있을 때만 넣는다
  *   (이전에는 담당자 칸이 빈 행이 하나라도 있으면 배치 전체가 실패했음).
- * - 같은 기관명+유형이 이미 있으면 건너뛴다 (같은 파일을 두 번 올려도 중복 생성 안 됨).
+ * - 같은 기관명+유형+지역이 이미 있으면 건너뛴다 (같은 파일을 두 번 올려도 중복 생성 안 됨).
  */
 export async function bulkImportInstitutions(rows: InstitutionRow[], uid: string): Promise<{ added: number; skipped: number }> {
   const existing = await getDocs(collection(db, COLLECTION));
   const seen = new Set<string>();
   existing.forEach((d) => {
-    const data = d.data() as { name?: string; type?: string };
-    if (data.name) seen.add(`${data.name.trim()}|${data.type ?? ""}`);
+    const data = d.data() as { name?: string; type?: string; region?: string };
+    if (data.name) seen.add(`${data.name.trim()}|${data.type ?? ""}|${(data.region ?? "").trim()}`);
   });
 
   const fresh: InstitutionRow[] = [];
   let skipped = 0;
   for (const row of rows) {
     if (!row.name) continue;
-    const key = `${row.name.trim()}|${row.type || "시청"}`;
+    const key = `${row.name.trim()}|${row.type || "시청"}|${(row.region ?? "").trim()}`;
     if (seen.has(key)) {
       skipped += 1;
       continue;
