@@ -85,24 +85,44 @@ export async function addInstitutionDocument(institutionId: string, input: Parti
 }
 
 /** 엑셀 일괄 등록: 200건 단위로 배치 커밋 (226개 안팎 규모라 한 배치면 충분하지만, 향후 확장 대비) */
-export async function bulkImportInstitutions(rows: InstitutionRow[], uid: string) {
-  const chunks: InstitutionRow[][] = [];
-  for (let i = 0; i < rows.length; i += 200) chunks.push(rows.slice(i, i + 200));
+/**
+ * 엑셀 일괄등록.
+ * - Firestore는 undefined 값을 거부하므로 담당자/직책은 값이 있을 때만 넣는다
+ *   (이전에는 담당자 칸이 빈 행이 하나라도 있으면 배치 전체가 실패했음).
+ * - 같은 기관명+유형+지역이 이미 있으면 건너뛴다 (같은 파일을 두 번 올려도 중복 생성 안 됨).
+ */
+export async function bulkImportInstitutions(rows: InstitutionRow[], uid: string): Promise<{ added: number; skipped: number }> {
+  const existing = await getDocs(collection(db, COLLECTION));
+  const seen = new Set<string>();
+  existing.forEach((d) => {
+    const data = d.data() as { name?: string; type?: string; region?: string };
+    if (data.name) seen.add(`${data.name.trim()}|${data.type ?? ""}|${(data.region ?? "").trim()}`);
+  });
 
-  for (const chunk of chunks) {
+  const fresh: InstitutionRow[] = [];
+  let skipped = 0;
+  for (const row of rows) {
+    if (!row.name) continue;
+    const key = `${row.name.trim()}|${row.type || "시청"}|${(row.region ?? "").trim()}`;
+    if (seen.has(key)) {
+      skipped += 1;
+      continue;
+    }
+    seen.add(key);
+    fresh.push(row);
+  }
+
+  for (let i = 0; i < fresh.length; i += 200) {
     const batch = writeBatch(db);
-    for (const row of chunk) {
-      if (!row.name) continue;
+    for (const row of fresh.slice(i, i + 200)) {
       const ref = doc(collection(db, COLLECTION));
       const tags = row.tags ? row.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
-      batch.set(ref, {
+      const data: Record<string, unknown> = {
         name: row.name,
         type: row.type || "시청",
         region: row.region,
         address: row.address,
         phone: row.phone,
-        contactName: row.contactName || undefined,
-        contactTitle: row.contactTitle || undefined,
         status: row.status || "신규",
         grade: row.grade || "C",
         tags,
@@ -110,10 +130,14 @@ export async function bulkImportInstitutions(rows: InstitutionRow[], uid: string
         createdBy: uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (row.contactName) data.contactName = row.contactName;
+      if (row.contactTitle) data.contactTitle = row.contactTitle;
+      batch.set(ref, data);
     }
     await batch.commit();
   }
+  return { added: fresh.length, skipped };
 }
 
 /**

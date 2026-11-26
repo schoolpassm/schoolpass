@@ -107,8 +107,8 @@ export default function InstitutionsPage() {
     setImporting(true);
     try {
       const rows = await parseInstitutionExcel(file);
-      await bulkImportInstitutions(rows, firebaseUser.uid);
-      alert(`${rows.length}건 업로드 완료`);
+      const { added, skipped } = await bulkImportInstitutions(rows, firebaseUser.uid);
+      alert(`${added}건 등록 완료${skipped ? ` (이미 있는 ${skipped}건은 건너뜀)` : ""}`);
     } catch (err: any) {
       alert(err.message || "업로드 중 오류가 발생했습니다.");
     } finally {
